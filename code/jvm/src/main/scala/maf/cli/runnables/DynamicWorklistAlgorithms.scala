@@ -1,6 +1,6 @@
 package maf.cli.runnables
 
-import maf.core.Expression
+import maf.core.{Address, Expression}
 import maf.language.scheme.{SchemeExp, SchemeParser}
 import maf.modular.scheme.SchemeConstantPropagationDomain
 import maf.modular.scheme.modf.{SchemeModFComponent, SchemeModFKCallSiteSensitivity, SchemeModFNoSensitivity, SimpleSchemeModFAnalysis, StandardSchemeModFComponents}
@@ -11,31 +11,40 @@ import maf.util.benchmarks.Timer
 
 object DynamicWorklistAlgorithms extends App:
 
-  trait MostDependenciesFirstWorklistAlgorithm[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] :
+  trait MostDependenciesFirstWorklistAlgorithm[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
     var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
     lazy val ordering: Ordering[Component] = Ordering.by(comp => depCount(comp))
-    private var correctDependencies: Map[Component, Set[Component]] = Map().withDefaultValue(Set.empty)
+    private var callDependencies: Map[Component, Set[Component]] = Map().withDefaultValue(Set.empty)
 
-    def updateDependencies(dependencies: Map[Component, Set[Component]]): Unit =
-      correctDependencies = dependencies
-      dependencies.keySet.foreach(comp => {
-        val currDep = dependencies.getOrElse(comp, Set.empty)
+    def updateDependencies(deps: Map[Component, Set[Component]], readDeps: Map[Component, Set[Address]], writeDeps: Map[Component, Set[Address]]): Unit =
+
+      // call dependencies
+      callDependencies = deps
+      deps.keySet.foreach(comp => {
+        val currDep = deps.getOrElse(comp, Set.empty)
         depCount += (comp -> currDep.size)
+      })
+
+      // read and write dependencies
+      for ((reader, addresses) <- readDeps; address <- addresses; writer <- writeDeps.keys if writeDeps(writer)(address)) {
+        addEdge(reader, writer)
       }
-    )
+      println(graphToString)
 
 
 
 
   type Deps = Map[SchemeModFComponent, Set[SchemeModFComponent]]
+  type GraphDeps = Map[SchemeModFComponent, Set[Address]]
   type SchemeAnalysisWithDeps = ModAnalysis[SchemeExp] with DependencyTracking[SchemeExp] with StandardSchemeModFComponents
 
-  def runAnalysis[A <: SchemeAnalysisWithDeps] (bench: (String, SchemeExp), analysis: SchemeExp => A): Deps =
+  def runAnalysis[A <: SchemeAnalysisWithDeps] (bench: (String, SchemeExp), analysis: SchemeExp => A): (Deps, GraphDeps, GraphDeps) =
     val a: A = analysis(bench._2)
     a.analyze()
-    val dependencies = a.dependencies
-    println(dependencies)
-    dependencies
+    val dependencies: Deps = a.dependencies
+    val readDependencies: GraphDeps = a.readDependencies
+    val writeDependencies: GraphDeps = a.writeEffects
+    (dependencies, readDependencies, writeDependencies)
 
   def randomAnalysis(program: SchemeExp) =
     new SimpleSchemeModFAnalysis(program)
@@ -65,4 +74,5 @@ object DynamicWorklistAlgorithms extends App:
         val program = SchemeParser.parseProgram(Reader.loadFile(b._1)) // doing parsing only once
         val analysis = depAnalysis(program)
         val dependencies = runAnalysis((b._2, program), program => randomAnalysis(program))
-        analysis.updateDependencies(dependencies)})
+        analysis.updateDependencies(dependencies._1, dependencies._2, dependencies._3)
+        analysis.analyze()})
