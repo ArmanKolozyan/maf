@@ -13,15 +13,18 @@ object DynamicWorklistAlgorithms extends App:
 
   trait MostDependenciesFirstWorklistAlgorithm[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] :
     var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-    lazy val ordering: Ordering[Component] = Ordering.by(depCount)
+    lazy val ordering: Ordering[Component] = Ordering.by(comp => depCount(comp))
     private var correctDependencies: Map[Component, Set[Component]] = Map().withDefaultValue(Set.empty)
 
     def updateDependencies(dependencies: Map[Component, Set[Component]]): Unit =
+      correctDependencies = dependencies
       dependencies.keySet.foreach(comp => {
         val currDep = dependencies.getOrElse(comp, Set.empty)
         depCount += (comp -> currDep.size)
       }
     )
+
+
 
 
   type Deps = Map[SchemeModFComponent, Set[SchemeModFComponent]]
