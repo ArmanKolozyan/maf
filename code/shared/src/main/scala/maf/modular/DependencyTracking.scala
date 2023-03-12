@@ -23,6 +23,27 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
     def getDirectDeps(src: Component): Set[Component] =
         graph.getOrElse(src, Set.empty).toSet
 
+    def dfs(start: Component, function: Component => Unit): Unit =
+        val visited = mutable.Set[Component]()
+        val stack = mutable.Stack[Component](start)
+        while stack.nonEmpty do
+            val node = stack.pop()
+            if !visited.contains(node) then
+                visited += node
+                function(node)
+                getDirectDeps(node).foreach(dep => stack.push(dep))
+
+    def bfs(start: Component, function: Component => Unit): Unit =
+        val visited = mutable.Set[Component]()
+        val queue = mutable.Queue[Component](start)
+
+        while queue.nonEmpty do
+            val node = queue.dequeue()
+            if !visited.contains(node) then
+                visited += node
+                function(node)
+                getDirectDeps(node).foreach(dep => queue.enqueue(dep))
+
     def graphToString: String =
         graph.map(from_to => from_to._1.toString + " -> " + from_to._2.map(_.toString).mkString(", ")).mkString("\n")
 
