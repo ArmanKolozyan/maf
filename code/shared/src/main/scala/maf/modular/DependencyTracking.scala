@@ -1,6 +1,7 @@
 package maf.modular
 
 import maf.core._
+import scala.collection.mutable
 
 // A common, but optional extension to ModAnalysis
 // Specifically, it keeps track of which components have spawned which other components
@@ -8,6 +9,22 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
     var dependencies: Map[Component, Set[Component]] = Map().withDefaultValue(Set.empty)
     var readDependencies: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
     var writeEffects: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
+    val graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
+
+    def addEdge(src: Component, dest: Component): Unit =
+        graph.getOrElseUpdate(src, mutable.Set()) += dest
+
+    def hasEdge(src: Component, dest: Component): Boolean =
+        graph.get(src).exists(_.contains(dest))
+
+    def removeEdge(src: Component, dest: Component): Unit =
+        graph.get(src).foreach(_.remove(dest))
+
+    def getDirectDeps(src: Component): Set[Component] =
+        graph.getOrElse(src, Set.empty).toSet
+
+    def graphToString: String =
+        graph.map(from_to => from_to._1.toString + " -> " + from_to._2.map(_.toString).mkString(", ")).mkString("\n")
 
     // update some rudimentary analysis results
     override def intraAnalysis(component: Component): DependencyTrackingIntra
@@ -25,4 +42,5 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
             writeEffects += component -> (writeEffects(component) ++ writeEffs)
 
     override def configString(): String = super.configString() + "\n  with dependency tracking"
+
 }
