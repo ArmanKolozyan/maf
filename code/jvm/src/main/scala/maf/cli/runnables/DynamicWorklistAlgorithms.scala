@@ -66,6 +66,21 @@ object DynamicWorklistAlgorithms extends App:
         fromNode -> toNodes
       }
 
+      // applying topological sorting
+      val sortedNodes = TopSort.topsort(newGraph.keys.toList, newGraph)
+
+      // updating the ordering of the priority queue based on the
+      // number of dependencies
+      sortedNodes.zipWithIndex.foreach { case (node, index) =>
+        newToOrigNodes.get(node).get.foreach(
+          // remarks:
+          // 1. all of the nodes of the same SCC get the same priority
+          // 2. first node of the topological sorting gets the lowest priority (because has least dependencies)
+          comp => depCount += (comp -> index)
+        )
+      }
+      println(depCount)
+
 
 
 
