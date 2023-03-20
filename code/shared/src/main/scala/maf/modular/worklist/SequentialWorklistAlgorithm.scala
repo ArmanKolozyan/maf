@@ -81,10 +81,16 @@ trait PriorityQueueWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Exp
     def push(cmp: Component) =
         if !worklistSet.contains(cmp) then
             worklistSet += cmp
+            println("IN")
+            println(worklist)
+            println(cmp)
             worklist += cmp
+            println("OUT")
     def pop(): Component =
         val cmp = worklist.dequeue()
         worklistSet -= cmp
+        println("COMP")
+        println(cmp)
         cmp
     def addToWorkList(cmp: Component): Unit = push(cmp)
     def finished: Boolean = worklist.isEmpty

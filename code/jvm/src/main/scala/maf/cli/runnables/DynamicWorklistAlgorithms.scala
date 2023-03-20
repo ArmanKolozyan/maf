@@ -5,31 +5,48 @@ import maf.language.scheme.{SchemeExp, SchemeParser}
 import maf.modular.scheme.SchemeConstantPropagationDomain
 import maf.modular.scheme.modf.{SchemeModFComponent, SchemeModFKCallSiteSensitivity, SchemeModFNoSensitivity, SimpleSchemeModFAnalysis, StandardSchemeModFComponents}
 import maf.modular.{Dependency, DependencyTracking, ModAnalysis}
-import maf.modular.worklist.{PriorityQueueWorklistAlgorithm, RandomWorklistAlgorithm}
+import maf.modular.worklist.{MostDependenciesFirstWorklistAlgorithm, PriorityQueueWorklistAlgorithm, RandomWorklistAlgorithm}
 import maf.util.Reader
 import maf.util.benchmarks.Timer
+import maf.util.graph.{Tarjan, TopSort}
+import maf.util.Wrapper.instance
+import maf.util.Wrapper2.instance
+
+import scala.collection.mutable
+
 
 object DynamicWorklistAlgorithms extends App:
 
   trait MostDependenciesFirstWorklistAlgorithm[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
     var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-    lazy val ordering: Ordering[Component] = Ordering.by(comp => depCount(comp))
+    lazy val ordering: Ordering[Component] = Ordering.by(depCount)
     private var callDependencies: Map[Component, Set[Component]] = Map().withDefaultValue(Set.empty)
 
     def updateDependencies(deps: Map[Component, Set[Component]], readDeps: Map[Component, Set[Address]], writeDeps: Map[Component, Set[Address]]): Unit =
 
+
+      // code to only work with call dependencies (commented out)
       // call dependencies
+      /*
       callDependencies = deps
       deps.keySet.foreach(comp => {
         val currDep = deps.getOrElse(comp, Set.empty)
         depCount += (comp -> currDep.size)
-      })
+      })*/
 
-      // read and write dependencies
+
+      // adding read and write dependencies to the graph that is in DependencyTracking
       for ((reader, addresses) <- readDeps; address <- addresses; writer <- writeDeps.keys if writeDeps(writer)(address)) {
         addEdge(reader, writer)
       }
-      println(graphToString)
+
+      // a graph to test how Tarjan.collapse works
+      val test_graph = Map("a" -> Set("b"), "b" -> Set("c"), "c" -> Set("d"), "d" -> Set("a"))
+
+      // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
+      // Care must be taken in case the graph consists of only 1 strongly connected component,
+      // because in that case you actually get back a graph with only 1 node.
+      val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
 
 
 
@@ -67,8 +84,8 @@ object DynamicWorklistAlgorithms extends App:
     }
 
   val bench: Map[String, String] = List(
-        ("test/R5RS/icp/icp_2_aeval.scm", "aeval"),
-      ).toMap
+    ("test/R5RS/ad/all.scm", "ad"),
+  ).toMap
 
   bench.foreach({ b =>
         val program = SchemeParser.parseProgram(Reader.loadFile(b._1)) // doing parsing only once
