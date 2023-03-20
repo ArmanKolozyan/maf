@@ -49,6 +49,24 @@ object DynamicWorklistAlgorithms extends App:
       val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
 
 
+      /// Now we are going to construct a new graph that has as
+      /// nodes the strongly connected components of the original graph
+
+
+      // a map from the new graph nodes to the original graph nodes
+      val newToOrigNodes: Map[String, Set[Component]] = sccs.zipWithIndex.map { case (nodes, idx) =>
+        val newNode = s"node$idx"
+        newNode -> nodes
+      }.toMap
+
+      // constructing the new graph
+      val newGraph: Map[String, Set[String]] = sccEdges.map { case (from, tos) =>
+        val fromNode = newToOrigNodes.find(_._2 == from).map(_._1).get
+        val toNodes = tos.flatMap(t => newToOrigNodes.find(_._2 == t).map(_._1))
+        fromNode -> toNodes
+      }
+
+
 
 
   type Deps = Map[SchemeModFComponent, Set[SchemeModFComponent]]
