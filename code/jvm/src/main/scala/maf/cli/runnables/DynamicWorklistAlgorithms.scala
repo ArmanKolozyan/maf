@@ -17,9 +17,9 @@ import scala.collection.mutable
 
 object DynamicWorklistAlgorithms extends App:
 
-  trait MostDependenciesFirstWorklistAlgorithm[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
+  trait MostDependenciesFirstWorklistAlgorithmPOC[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
     var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-    lazy val ordering: Ordering[Component] = Ordering.by(depCount)
+    lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
     private var callDependencies: Map[Component, Set[Component]] = Map().withDefaultValue(Set.empty)
 
     def updateDependencies(deps: Map[Component, Set[Component]], readDeps: Map[Component, Set[Address]], writeDeps: Map[Component, Set[Address]]): Unit =
@@ -37,7 +37,7 @@ object DynamicWorklistAlgorithms extends App:
 
       // adding read and write dependencies to the graph that is in DependencyTracking
       for ((reader, addresses) <- readDeps; address <- addresses; writer <- writeDeps.keys if writeDeps(writer)(address)) {
-        addEdge(reader, writer)
+        addEdge(writer, reader)
       }
 
       // a graph to test how Tarjan.collapse works
@@ -79,8 +79,6 @@ object DynamicWorklistAlgorithms extends App:
           comp => depCount += (comp -> index)
         )
       }
-      println(depCount)
-
 
 
 
@@ -111,7 +109,7 @@ object DynamicWorklistAlgorithms extends App:
       with SchemeModFNoSensitivity
       with SchemeConstantPropagationDomain
       with DependencyTracking[SchemeExp]
-      with MostDependenciesFirstWorklistAlgorithm[SchemeExp] {
+      with MostDependenciesFirstWorklistAlgorithmPOC[SchemeExp] {
       override def intraAnalysis(cmp: SchemeModFComponent) =
         new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
     }
