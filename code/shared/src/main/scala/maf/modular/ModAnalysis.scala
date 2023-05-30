@@ -9,6 +9,9 @@ import java.io.{FileInputStream, FileOutputStream, ObjectInputStream, ObjectOutp
 import maf.util.graph.Graph.apply
 import maf.util.graph.DotGraph
 
+import scala.collection.immutable.Set
+import scala.collection.mutable
+
 // an intra-analysis of a component can read ("register") or write ("trigger") dependencies
 // a dependency represents a part of the global analysis state (such as a location in the global analysis' store)
 // in essence, whenever a dependency is triggered, all registered components for that dependency need to be re-analyzed
@@ -62,8 +65,12 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
     type Component <: Serializable
     def initialComponent: Component
     def expr(cmp: Component): Expr
+    
+    var counter: Int = 0
 
     var timeMap: Map[String, Double] = Map()
+
+    var analysis_stats_map: mutable.Map[String, Int] = mutable.Map()
 
     // some form of "worklist" is required to keep track of which components need to be (re-)analyzed
     // this method is responsible for adding a given component to that worklist
@@ -125,6 +132,7 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
 
         /** Pushes the local changes to the global analysis state. */
         def commit(): Unit =
+            counter = counter + 1
             R.foreach(inter.register(component, _))
             W.foreach(dep => if doWrite(dep) then inter.trigger(dep))
             C.foreach(inter.spawn(_, component))

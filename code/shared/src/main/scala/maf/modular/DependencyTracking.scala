@@ -6,10 +6,10 @@ import scala.collection.mutable
 // A common, but optional extension to ModAnalysis
 // Specifically, it keeps track of which components have spawned which other components
 trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =>
-    var dependencies: Map[Component, Set[Component]] = Map().withDefaultValue(Set.empty)
+    var dependencies: mutable.Map[Component, mutable.Set[Component]] = mutable.Map().withDefaultValue(mutable.Set.empty)
     var readDependencies: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
     var writeEffects: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
-    val graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
+    var graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
 
     def addEdge(src: Component, dest: Component): Unit =
         graph.getOrElseUpdate(src, mutable.Set()) += dest

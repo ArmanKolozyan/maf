@@ -1,12 +1,11 @@
 package maf.modular.worklist
 
-import maf.core._
+import maf.core.*
 import maf.core.worklist.{FIFOWorkList, LIFOWorkList, RandomWorkList, WorkList}
-import maf.modular.ModAnalysis
+import maf.modular.{Dependency, GlobalStore, ModAnalysis}
 import maf.util.benchmarks.Timeout
 
 import scala.collection.mutable.PriorityQueue
-import maf.modular.Dependency
 
 trait SequentialWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Expr]:
     // we can choose what kind of worklist to pick
@@ -38,16 +37,26 @@ trait SequentialWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Expr]:
         workList = workList.tail
         // do the intra-analysis
         // intraCount = intraCount + 1
+        //println(s"Current: ${current}")
         val intra = intraAnalysis(current)
+      //  print(current.toString + "->")
+      //  println("----")
+      //  println(workList.toString)
+      //  println("----")
         val timeBefore: Double = timeout.time
         intra.analyzeWithTimeout(timeout)
         val timeTaken: Double = timeout.time - timeBefore
         val currentTime: Double = timeMap.getOrElse(current.toString, 0.0)
-        timeMap = timeMap + (current.toString -> (currentTime + timeTaken))
+        val current_string: String = current.toString
+        timeMap = timeMap + (current_string -> (currentTime + timeTaken))
         if timeout.reached then
             // analysis timed out => we need to add it to the worklist again
             addToWorkList(current)
         else
+            analysis_stats_map.updateWith(current_string) {
+                case Some(i) => Some(i + 1)
+                case None => Some(1)
+            }
             // analysis finished properly => commit its changes to the global analysis state
             intra.commit()
 
@@ -72,7 +81,7 @@ trait FIFOWorklistAlgorithm[Expr <: Expression] extends SequentialWorklistAlgori
     override def configString(): String = super.configString() + "\n  using a FIFO work list"
 
 /** Provides a work list with a random exploration order to a modular analysis. */
-trait RandomWorklistAlgorithm[Expr <: Expression] extends SequentialWorklistAlgorithm[Expr]:
+trait RandomWorklistAlgorithm[Expr <: Expression] extends SequentialWorklistAlgorithm[Expr] with GlobalStore[Expr]:
     def emptyWorkList = RandomWorkList()
     override def configString(): String = super.configString() + "\n  using a random work list"
 
@@ -84,32 +93,47 @@ trait PriorityQueueWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Exp
     var worklistSet: Set[Component] = Set(initialComponent)
     lazy val worklist: PriorityQueue[Component] = PriorityQueue(initialComponent)
     def push(cmp: Component) =
+        println("III")
         if !worklistSet.contains(cmp) then
             worklistSet += cmp
             worklist += cmp
     def pop(): Component =
+        println("UUU")
         val cmp = worklist.dequeue()
+        //println(s"Current: ${cmp}")
         worklistSet -= cmp
         cmp
     def addToWorkList(cmp: Component): Unit = push(cmp)
     def finished: Boolean = worklist.isEmpty
     // a single step in the worklist algorithm iteration
     def step(timeout: Timeout.T): Unit =
+     //   println("======= Step start")
         // take the next component
+    //   print(s"$worklist ;")
+
         val current = pop()
+      //  println(current)
         // do the intra-analysis
         val intra = intraAnalysis(current)
         val timeBefore: Double = timeout.time
         intra.analyzeWithTimeout(timeout)
         val timeTaken: Double = timeout.time - timeBefore
         val currentTime: Double = timeMap.getOrElse(current.toString, 0.0)
-        timeMap = timeMap + (current.toString -> (currentTime + timeTaken))
+        timeMap = timeMap + (current.toString + expr(current).idn -> (currentTime + timeTaken))
         if timeout.reached then
         // analysis timed out => we need to add it to the worklist again
             addToWorkList(current)
         else
+            val current_string: String = current.toString
+            analysis_stats_map.updateWith(current_string) {
+                case Some(i) => Some(i + 1)
+                case None => Some(1)
+            }
         // analysis finished properly => commit its changes to the global analysis state
             intra.commit()
+
+      //  println("======= Step end")
+
 
     // step until worklist is empty or timeout is reached
     def run(timeout: Timeout.T): Unit =

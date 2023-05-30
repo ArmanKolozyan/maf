@@ -2,7 +2,8 @@ package maf.cli.runnables
 
 import maf.bench.scheme.SchemeBenchmarkPrograms
 import maf.cli.experiments.SchemeAnalyses
-import maf.core.{Identifier, Monad}
+import maf.cli.runnables.DynamicWorklistAlgorithms.{LeastDependenciesFirstWorklistAlgorithmPOC, LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check}
+import maf.core.{Address, Identifier, Monad}
 import maf.language.CScheme.CSchemeParser
 import maf.language.scheme.*
 import maf.modular.*
@@ -16,12 +17,16 @@ import maf.util.benchmarks.{Timeout, Timer}
 
 import scala.concurrent.duration.*
 
+import scala.collection.immutable.Set
+import scala.collection.mutable
+
 // null values are used here due to Java interop
 import scala.language.unsafeNulls
 
 object AnalyzeWorklistAlgorithms extends App :
   val analyses = List(
-    (randomAnalysis, "RandomWorklistAlgorithm"))
+    (randomAnalysis, "RandomWorklistAlgorithm"),
+      (depAnalysis, "DepAnalysis"))
   val bench: Map[String, String] = List(
     ("test/R5RS/gambit/scheme.scm", "scheme"),
     ("test/R5RS/icp/icp_7_eceval.scm", "eceval"),
@@ -47,18 +52,17 @@ object AnalyzeWorklistAlgorithms extends App :
     ("test/R5RS/gambit/browse.scm", "browse"),
     ("test/R5RS/icp/icp_5_regsim.scm", "regsim"),
   ).toMap
-  val warmup = 3
+  val warmup = 5
   val numIterations = 10
 
-  def runAnalysis[A <: ModAnalysis[SchemeExp]](bench: (String, SchemeExp), analysis: SchemeExp => A, worklist: String): (Map[String, Double], Long) =
-    val a = analysis(bench._2)
+  def timeAnalysis[A <: ModAnalysis[SchemeExp]](bench: (String, SchemeExp), analysis: A, worklist: String): (mutable.Map[String, Int], Long) =
     var time: Long = -1
-    println(s"Analysis of ${bench._1} with heuristic $worklist")
+  //  println(s"Analysis of ${bench._1} with heuristic $worklist")
     try {
       time = Timer.timeOnly {
-        a.analyze()
+        analysis.analyze()
       }
-      println(s"terminated in ${time / 1000000} ms.")
+   //   println(s"terminated in ${time / 1000000} ms.")
     } catch {
       case t: Throwable =>
         println(s"raised exception.")
@@ -66,7 +70,7 @@ object AnalyzeWorklistAlgorithms extends App :
         t.printStackTrace()
         System.err.flush()
     }
-    (a.timeMap, time)
+    (analysis.analysis_stats_map, time)
 
   def randomAnalysis(program: SchemeExp) = new BasicAnalysis(program) with RandomWorklistAlgorithm[SchemeExp]
 
@@ -92,6 +96,20 @@ object AnalyzeWorklistAlgorithms extends App :
 
   def smallerEnvironmentFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with SmallerEnvironmentFirstWorklistAlgorithm.ModF
 
+  def liveAnalysis_CallsOnly_With_Check(program: SchemeExp) =
+    new SimpleSchemeModFAnalysis(program)
+      with SchemeModFNoSensitivity
+      with SchemeConstantPropagationDomain
+      with DependencyTracking[SchemeExp]
+      with GlobalStore[SchemeExp]
+      with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check[SchemeExp] {
+      override def intraAnalysis(cmp: SchemeModFComponent) =
+        new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
+    }
+
+
+  def depAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastDependenciesFirstWorklistAlgorithmPOC[SchemeExp]
+
   abstract class BasicAnalysis(program: SchemeExp) extends SimpleSchemeModFAnalysis(program)
     with SchemeConstantPropagationDomain
     with DependencyTracking[SchemeExp]
@@ -99,19 +117,6 @@ object AnalyzeWorklistAlgorithms extends App :
     override def intraAnalysis(cmp: SchemeModFComponent) =
       new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
   }
-  bench.foreach({ b =>
-    val program = SchemeParser.parseProgram(Reader.loadFile(b._1)) // doing parsing only once
-    analyses.foreach((analysis, worklistName) => {
-      val results = (1 to (warmup + numIterations)).map(_ =>
-        val result = runAnalysis((b._2, program), program => analysis(program), worklistName)
-          result._2
-      )
-      val avgTime = results.drop(warmup).sum / numIterations.toDouble
-      println(s"Average time for $worklistName on ${b._2}: ${avgTime / 1000000.0} ms.")
-      println()
-      println()
-    })
-  })
 
 
 
