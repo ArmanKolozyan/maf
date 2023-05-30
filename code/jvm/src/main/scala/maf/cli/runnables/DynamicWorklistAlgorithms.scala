@@ -1,7 +1,7 @@
 package maf.cli.runnables
 
 import maf.cli.runnables.AnalyzeWorklistAlgorithms.{FIFOanalysis, LIFOanalysis, numIterations, timeAnalysis, warmup}
-import maf.cli.runnables.DynamicWorklistAlgorithms.{LeastDependenciesFirstWorklistAlgorithmPOC, LiveLeastDependenciesFirstWorklistAlgorithm, LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check}
+import maf.cli.runnables.DynamicWorklistAlgorithms.{LeastDependenciesFirstWorklistAlgorithmPOC, LiveLeastDependenciesFirstWorklistAlgorithm, LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2}
 import maf.core.{Address, Expression}
 import maf.language.scheme.{SchemeExp, SchemeParser}
 import maf.modular.scheme.SchemeConstantPropagationDomain
@@ -170,6 +170,68 @@ object DynamicWorklistAlgorithms extends App:
 
       override def commit(): Unit =
         super.commit()
+        depCount = Map.empty.withDefaultValue(0)
+
+        graph = dependencies
+
+        if old_graph != graph then {
+          old_graph = graph.clone()
+          // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
+          // Care must be taken in case the graph consists of only 1 strongly connected component,
+          // because in that case you actually get back a graph with only 1 node.
+          val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
+
+
+          /// Now we are going to construct a new graph that has as
+          /// nodes the strongly connected components of the original graph
+
+
+          // a map from the new graph nodes to the original graph nodes
+          val newToOrigNodes: Map[Int, Set[Component]] = sccs.zipWithIndex.map { case (nodes, idx) =>
+            val newNode = idx
+            newNode -> nodes
+          }.toMap
+
+          // constructing the new graph
+          val newGraph: Map[Int, Set[Int]] = sccEdges.map { case (from, tos) =>
+            val fromNode = newToOrigNodes.find(_._2 == from).map(_._1).get
+            val toNodes = tos.flatMap(t => newToOrigNodes.find(_._2 == t).map(_._1))
+            fromNode -> toNodes
+          }
+
+          // applying topological sorting
+          val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
+
+          // updating the ordering of the priority queue based on the
+          // number of dependencies
+          sortedNodes.zipWithIndex.foreach { case (node, index) =>
+            sortedNodes.foreach(
+              // remarks:
+              // 1. all of the nodes of the same SCC get the same priority
+              // 2. first node of the topological sorting gets the highest priority (because has least dependencies)
+              comps => comps.foreach(
+                comp => depCount += (comp -> {
+                  index
+                }
+                  )
+              )
+            )
+          }
+        }
+        else {
+        }
+
+  trait LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
+    var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
+    lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
+    var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
+
+    override def intraAnalysis(component: Component): LiveDependencyTrackingIntra
+
+    trait LiveDependencyTrackingIntra extends DependencyTrackingIntra :
+
+      override def commit(): Unit =
+        super.commit()
 
         graph = dependencies
 
@@ -261,6 +323,7 @@ object DynamicWorklistAlgorithms extends App:
 
       override def commit(): Unit =
         super.commit()
+        graph = dependencies
         depCount = Map.empty.withDefaultValue(0)
         // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
         // Care must be taken in case the graph consists of only 1 strongly connected component,
@@ -485,9 +548,20 @@ object DynamicWorklistAlgorithms extends App:
       with SchemeConstantPropagationDomain
       with DependencyTracking[SchemeExp]
       with GlobalStore[SchemeExp]
-      with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check[SchemeExp] {
+      with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2[SchemeExp] {
       override def intraAnalysis(cmp: SchemeModFComponent) =
         new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
+    }
+
+  def liveAnalysis_CallersOnly_With_Check(program: SchemeExp) =
+    new SimpleSchemeModFAnalysis(program)
+      with SchemeModFNoSensitivity
+      with SchemeConstantPropagationDomain
+      with DependencyTracking[SchemeExp]
+      with GlobalStore[SchemeExp]
+      with LiveLeastDependenciesFirstWorklistAlgorithm_CallersOnly_With_Check[SchemeExp] {
+      override def intraAnalysis(cmp: SchemeModFComponent) =
+        new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntraa
     }
 
 
@@ -628,12 +702,211 @@ object DynamicWorklistAlgorithms extends App:
   //11684
 
   val bench: Map[String, String] = List(
+    ("test/R5RS/gambit/scheme.scm", "scheme"),
+    ("test/R5RS/icp/icp_7_eceval.scm", "eceval"),
+    ("test/R5RS/gambit/sboyer.scm", "sboyer"),
+    ("test/R5RS/gambit/peval.scm", "peval"),
+    ("test/R5RS/icp/icp_1c_multiple-dwelling.scm", "multiple-dwelling"),
     ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "prime-sum-pair"),
+    ("test/R5RS/WeiChenRompf2019/toplas98/boyer.scm", "boyer"),
+    ("test/R5RS/various/SICP-compiler.scm", "SICP-compiler"),
+    ("test/R5RS/icp/icp_8_compiler.scm", "compiler"),
   ).toMap
 
   bench.foreach({ b =>
     println(b._2)
     val program = SchemeParser.parseProgram(Reader.loadFile(b._1)) // doing parsing only once
+
+
+    val result3: IndexedSeq[Double] = (1 to (warmup + numIterations)).map(_ =>
+      val aaa = randomAnalysis(program)
+      val result = timeAnalysis((b._2, program), aaa, "Main_Last_Heuristic")
+        result
+      ._2
+    )
+    val statistics3 = Statistics.all(result3.drop(warmup).toList)
+    //val avgTime4 = vectorSum(results4.drop(warmup).toVector) / numIterations.toDouble
+    println(s"Statistics time for Random on ${b._2}: ${statistics3}")
+
+
+    println("----")
+
+    val result2: IndexedSeq[Double] = (1 to (warmup + numIterations)).map(_ =>
+      val aa = FIFOanalysis(program)
+      val result = timeAnalysis((b._2, program), aa, "Main_Last_Heuristic")
+        result
+      ._2
+    )
+    val statistics2 = Statistics.all(result2.drop(warmup).toList)
+    println(s"Total iterations for FIFO: $statistics2")
+
+    println("----")
+
+
+    val result4: IndexedSeq[Double] = (1 to (warmup + numIterations)).map(_ =>
+      val aaaa = LIFOanalysis(program)
+      val result = timeAnalysis((b._2, program), aaaa, "Main_Last_Heuristic")
+        result
+      ._2
+    )
+    val statistics4 = Statistics.all(result4.drop(warmup).toList)
+    println(s"Total iterations for LIFO: $statistics4")
+
+    println("----")
+
+
+    var total_iterations8: Int = 0
+    val dependencies = runAnalysis((b._2, program), program => randomAnalysis(program))
+    val result8: IndexedSeq[Double] = (1 to (warmup + numIterations)).map(_ =>
+      val a = least_dependencies_first(program)
+        a.updateDependencies(dependencies._1, dependencies._2, dependencies._3)
+      val result = timeAnalysis((b._2, program), a, "POC_least")
+        result
+      ._2
+    )
+    val statistics8 = Statistics.all(result8.drop(warmup).toList)
+
+    println(s"Total iterations for POC all dependencies: $statistics8")
+
+    println("----")
+
+    val dependencies2 = runAnalysis((b._2, program), program => randomAnalysis(program))
+    val result9: IndexedSeq[Double] = (1 to (warmup + numIterations)).map(_ =>
+      val au = call_dependencies_only_with_Tarjan(program)
+        au.updateDependencies(dependencies2._1, dependencies2._2, dependencies2._3)
+      val result = timeAnalysis((b._2, program), au, "POC_least")
+        result._2
+    )
+    val statistics9 = Statistics.all(result9.drop(warmup).toList)
+
+    println(s"Total iterations for POC call dependencies only: $statistics9")
+
+    println("----")
+
+
+    val result7: IndexedSeq[Double] = (1 to (warmup + numIterations)).map(_ =>
+      val aaaaaaa = liveAnalysis(program)
+      val result = timeAnalysis((b._2, program), aaaaaaa, "Main_Last_Heuristic")
+        result
+      ._2
+    )
+    val statistics7 = Statistics.all(result7.drop(warmup).toList)
+    println(s"Total iterations for Live analysis all dependencies: $statistics7")
+
+    println("----")
+
+
+    val result: IndexedSeq[Double] = (1 to (warmup + numIterations)).map(_ =>
+      val a = liveAnalysis_CallsOnly_With_Check(program)
+      val result = timeAnalysis((b._2, program), a, "Main_Last_Heuristic")
+        result
+      ._2
+    )
+    val statistics = Statistics.all(result.drop(warmup).toList)
+    println(s"Total iterations for Live analysis call dependencies with check: $statistics")
+
+    println("----")
+
+
+    val result5 = (1 to (warmup + numIterations)).map(_ =>
+      val aaaaa = liveAnalysis_CallsOnly_Without_Check(program)
+      val result = timeAnalysis((b._2, program), aaaaa, "Main_Last_Heuristic")
+        result
+      ._2
+    )
+    val statistics5 = Statistics.all(result5.drop(warmup).toList)
+    println(s"Total iterations for Live analysis call dependencies without check: $statistics5")
+
+    println("----")
+
+
+    val result6 = (1 to (warmup + numIterations)).map(_ =>
+      val aaaaaa = liveAnalysis_CallersOnly_With_Check(program)
+      val result = timeAnalysis((b._2, program), aaaaaa, "Main_Last_Heuristic")
+        result
+      ._2
+    )
+    val statistics6 = Statistics.all(result6.drop(warmup).toList)
+    println(s"Total iterations for Live analysis caller first dependencies without check: $statistics6")
+
+    println("----")
+
+  })
+
+  bench.foreach({ b =>
+    println(b._2)
+    val program = SchemeParser.parseProgram(Reader.loadFile(b._1)) // doing parsing only once
+
+
+    val aaa = randomAnalysis(program)
+    val result3 = timeAnalysis((b._2, program), aaa, "MINE")
+    var total_iterations3: Int = 0
+    result3._1.foreach { case (key, value) =>
+      total_iterations3 += value
+    }
+    println(s"Total iterations for Random: $total_iterations3")
+
+    println("----")
+
+    val aa = FIFOanalysis(program)
+    val result2 = timeAnalysis((b._2, program), aa, "FIFO")
+    var total_iterations2 = 0
+    result2._1.foreach { case (key, value) =>
+      total_iterations2 += value
+    }
+    println(s"Total iterations for FIFO: $total_iterations2")
+
+    println("----")
+
+
+    val aaaa = LIFOanalysis(program)
+    val result4 = timeAnalysis((b._2, program), aaaa, "MINE")
+    var total_iterations4: Int = 0
+    result4._1.foreach { case (key, value) =>
+      total_iterations4 += value
+    }
+    println(s"Total iterations for LIFO: $total_iterations4")
+
+    println("----")
+
+
+    var total_iterations8: Int = 0
+    val dependencies = runAnalysis((b._2, program), program => randomAnalysis(program))
+    val result8 =
+      val a = least_dependencies_first(program)
+      a.updateDependencies(dependencies._1, dependencies._2, dependencies._3)
+      val result = timeAnalysis((b._2, program), a, "POC_least")
+      result
+    result8._1.foreach { case (key, value) =>
+      total_iterations8 += value
+    }
+    println(s"Total iterations for POC all dependencies: $total_iterations8")
+
+    println("----")
+
+    var total_iterations9: Int = 0
+    val dependencies2 = runAnalysis((b._2, program), program => randomAnalysis(program))
+    val result9 =
+      val a = call_dependencies_only_with_Tarjan(program)
+      a.updateDependencies(dependencies2._1, dependencies2._2, dependencies2._3)
+      val result = timeAnalysis((b._2, program), a, "POC_least")
+      result
+    result9._1.foreach { case (key, value) =>
+      total_iterations9 += value
+    }
+    println(s"Total iterations for POC call dependencies only: $total_iterations9")
+
+    println("----")
+
+
+    val aaaaaaa = liveAnalysis(program)
+    val result7 = timeAnalysis((b._2, program), aaaaaaa, "MINE")
+    var total_iterations7: Int = 0
+    result7._1.foreach { case (key, value) =>
+      total_iterations7 += value
+    }
+    println(s"Total iterations for Live analysis all dependencies: $total_iterations7")
+
     println("----")
 
 
@@ -655,6 +928,17 @@ object DynamicWorklistAlgorithms extends App:
       total_iterations5 += value
     }
     println(s"Total iterations for Live analysis call dependencies without check: $total_iterations5")
+
+    println("----")
+
+
+    val aaaaaa = liveAnalysis_CallersOnly_With_Check(program)
+    val result6 = timeAnalysis((b._2, program), aaaaaa, "MINE")
+    var total_iterations6: Int = 0
+    result6._1.foreach { case (key, value) =>
+      total_iterations6 += value
+    }
+    println(s"Total iterations for Live analysis caller first dependencies without check: $total_iterations6")
 
     println("----")
 
