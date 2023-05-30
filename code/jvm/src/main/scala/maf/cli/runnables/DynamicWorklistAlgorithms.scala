@@ -1,7 +1,7 @@
 package maf.cli.runnables
 
 import maf.cli.runnables.AnalyzeWorklistAlgorithms.{FIFOanalysis, LIFOanalysis, numIterations, timeAnalysis, warmup}
-import maf.cli.runnables.DynamicWorklistAlgorithms.{LeastDependenciesFirstWorklistAlgorithmPOC, LiveLeastDependenciesFirstWorklistAlgorithm, LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2}
+import maf.cli.runnables.DynamicWorklistAlgorithms.{LeastDependenciesFirstWorklistAlgorithmPOC, LiveLeastDependenciesFirstWorklistAlgorithm, LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check}
 import maf.core.{Address, Expression}
 import maf.language.scheme.{SchemeExp, SchemeParser}
 import maf.modular.scheme.SchemeConstantPropagationDomain
@@ -96,8 +96,8 @@ object DynamicWorklistAlgorithms extends App:
     override def intraAnalysis(component: Component): LiveDependencyTrackingIntra
     trait LiveDependencyTrackingIntra extends DependencyTrackingIntra:
       override def commit(): Unit =
-        depCount = Map.empty.withDefaultValue(0)
         super.commit()
+        depCount = Map.empty.withDefaultValue(0)
         // adding read and write dependencies to the graph that is in DependencyTracking
         for ((reader, addresses) <- readDependencies; address <- addresses; writer <- writeEffects.keys if writeEffects(writer)(address)) {
           addEdge(writer, reader)
@@ -112,7 +112,7 @@ object DynamicWorklistAlgorithms extends App:
         val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
 
         if sccs.toList.length == 1 then
-          // code to only work with call dependencies
+        // code to only work with call dependencies
           dependencies.keySet.foreach(comp => {
             val currDep = dependencies.getOrElse(comp, Set.empty)
             depCount += (comp -> -currDep.size)
@@ -169,68 +169,6 @@ object DynamicWorklistAlgorithms extends App:
     trait LiveDependencyTrackingIntra extends DependencyTrackingIntra :
 
       override def commit(): Unit =
-        depCount = Map.empty.withDefaultValue(0)
-        super.commit()
-
-        graph = dependencies
-
-        if old_graph != graph then {
-          old_graph = graph.clone()
-          // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
-          // Care must be taken in case the graph consists of only 1 strongly connected component,
-          // because in that case you actually get back a graph with only 1 node.
-          val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
-
-
-          /// Now we are going to construct a new graph that has as
-          /// nodes the strongly connected components of the original graph
-
-
-          // a map from the new graph nodes to the original graph nodes
-          val newToOrigNodes: Map[Int, Set[Component]] = sccs.zipWithIndex.map { case (nodes, idx) =>
-            val newNode = idx
-            newNode -> nodes
-          }.toMap
-
-          // constructing the new graph
-          val newGraph: Map[Int, Set[Int]] = sccEdges.map { case (from, tos) =>
-            val fromNode = newToOrigNodes.find(_._2 == from).map(_._1).get
-            val toNodes = tos.flatMap(t => newToOrigNodes.find(_._2 == t).map(_._1))
-            fromNode -> toNodes
-          }
-
-          // applying topological sorting
-          val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
-
-          // updating the ordering of the priority queue based on the
-          // number of dependencies
-          sortedNodes.zipWithIndex.foreach { case (node, index) =>
-            sortedNodes.foreach(
-              // remarks:
-              // 1. all of the nodes of the same SCC get the same priority
-              // 2. first node of the topological sorting gets the highest priority (because has least dependencies)
-              comps => comps.foreach(
-                comp => depCount += (comp -> {
-                  index
-                }
-              )
-              )
-            )
-          }
-        }
-        else {
-        }
-
-  trait LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
-    var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-    lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-    var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
-
-    override def intraAnalysis(component: Component): LiveDependencyTrackingIntra
-
-    trait LiveDependencyTrackingIntra extends DependencyTrackingIntra :
-
-      override def commit(): Unit =
         super.commit()
 
         graph = dependencies
@@ -259,7 +197,7 @@ object DynamicWorklistAlgorithms extends App:
                 )
             )
           }
-//          println(s"depcount: ${depCount}")
+          //          println(s"depcount: ${depCount}")
 
 
           //          println(depCount)
@@ -316,18 +254,14 @@ object DynamicWorklistAlgorithms extends App:
   trait LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_Without_Check[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
     var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
     lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-    var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
 
-    override def intraAnalysis(component: Component): LiveDependencyTrackingIntra
+    override def intraAnalysis(component: Component): LiveDependencyTrackingIntraaa
 
-    trait LiveDependencyTrackingIntra extends DependencyTrackingIntra :
+    trait LiveDependencyTrackingIntraaa extends DependencyTrackingIntra :
 
       override def commit(): Unit =
-        println("A")
-        println("B")
         super.commit()
         depCount = Map.empty.withDefaultValue(0)
-        println("C")
         // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
         // Care must be taken in case the graph consists of only 1 strongly connected component,
         // because in that case you actually get back a graph with only 1 node.
@@ -432,9 +366,9 @@ object DynamicWorklistAlgorithms extends App:
       // code to only work with call dependencies
       callDependencies = deps
       deps.keySet.foreach(comp => {
-          val currDep = deps.getOrElse(comp, Set.empty)
-          depCount += (comp -> -currDep.size)
-        })
+        val currDep = deps.getOrElse(comp, Set.empty)
+        depCount += (comp -> -currDep.size)
+      })
 
 
   trait OnlyDependenciesFirstWorklistAlgorithmPOC_Tarjan[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr] :
@@ -551,20 +485,9 @@ object DynamicWorklistAlgorithms extends App:
       with SchemeConstantPropagationDomain
       with DependencyTracking[SchemeExp]
       with GlobalStore[SchemeExp]
-      with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2[SchemeExp] {
+      with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check[SchemeExp] {
       override def intraAnalysis(cmp: SchemeModFComponent) =
         new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
-    }
-
-  def liveAnalysis_CallersOnly_With_Check(program: SchemeExp) =
-    new SimpleSchemeModFAnalysis(program)
-      with SchemeModFNoSensitivity
-      with SchemeConstantPropagationDomain
-      with DependencyTracking[SchemeExp]
-      with GlobalStore[SchemeExp]
-      with LiveLeastDependenciesFirstWorklistAlgorithm_CallersOnly_With_Check[SchemeExp] {
-      override def intraAnalysis(cmp: SchemeModFComponent) =
-        new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntraa
     }
 
 
@@ -587,7 +510,7 @@ object DynamicWorklistAlgorithms extends App:
       with GlobalStore[SchemeExp]
       with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_Without_Check[SchemeExp] {
       override def intraAnalysis(cmp: SchemeModFComponent) =
-        new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
+        new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntraaa
     }
 
   def weirdest_analysis(program: SchemeExp) =
@@ -702,20 +625,27 @@ object DynamicWorklistAlgorithms extends App:
     println()
     println()
   })*/
-//11684
+  //11684
 
   val bench: Map[String, String] = List(
-    ("test/R5RS/gambit/sboyer.scm", "sboyer"),
+    ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "prime-sum-pair"),
   ).toMap
 
   bench.foreach({ b =>
     println(b._2)
     val program = SchemeParser.parseProgram(Reader.loadFile(b._1)) // doing parsing only once
+    println("----")
 
 
+    val a = liveAnalysis_CallsOnly_With_Check(program)
+    val result = timeAnalysis((b._2, program), a, "MINE")
+    var total_iterations: Int = 0
+    result._1.foreach { case (key, value) =>
+      total_iterations += value
+    }
+    println(s"Total iterations for Live analysis call dependencies with check: $total_iterations")
 
-
-
+    println("----")
 
 
     val aaaaa = liveAnalysis_CallsOnly_Without_Check(program)
@@ -725,17 +655,6 @@ object DynamicWorklistAlgorithms extends App:
       total_iterations5 += value
     }
     println(s"Total iterations for Live analysis call dependencies without check: $total_iterations5")
-
-    println("----")
-
-
-    val aaaaaa = liveAnalysis_CallersOnly_With_Check(program)
-    val result6 = timeAnalysis((b._2, program), aaaaaa, "MINE")
-    var total_iterations6: Int = 0
-    result6._1.foreach { case (key, value) =>
-      total_iterations6 += value
-    }
-    println(s"Total iterations for Live analysis caller first dependencies without check: $total_iterations6")
 
     println("----")
 

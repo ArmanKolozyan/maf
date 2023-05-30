@@ -93,12 +93,10 @@ trait PriorityQueueWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Exp
     var worklistSet: Set[Component] = Set(initialComponent)
     lazy val worklist: PriorityQueue[Component] = PriorityQueue(initialComponent)
     def push(cmp: Component) =
-        println("III")
         if !worklistSet.contains(cmp) then
             worklistSet += cmp
             worklist += cmp
     def pop(): Component =
-        println("UUU")
         val cmp = worklist.dequeue()
         //println(s"Current: ${cmp}")
         worklistSet -= cmp
