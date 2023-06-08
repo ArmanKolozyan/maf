@@ -708,7 +708,7 @@ object DynamicWorklistAlgorithms extends App:
 
             // Flush the output table to a file
             val outputString = outputTable.toCSVString()
-            val file = Writer.openTimeStamped("output/results.csv")
+            val file = Writer.open("output/results.csv")
             Writer.write(file, outputString)
             Writer.close(file)
         }
