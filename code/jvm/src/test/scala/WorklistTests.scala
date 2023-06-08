@@ -1,4 +1,4 @@
-import maf.cli.runnables.AnalyzeWorklistAlgorithms.{FIFOanalysis, LIFOanalysis, biggerEnvironmentFirstAnalysis, callDepthAnalysis, deepExpressionFirstAnalysis, depAnalysis, leastDependenciesFirstAnalysis, leastVisitedAnalysis, liveAnalysis_CallsOnly, mostDependenciesFirstAnalysis, mostVisitedAnalysis, shallowExpressionsFirstAnalysis, smallerEnvironmentFirstAnalysis}
+import maf.cli.runnables.AnalyzeWorklistAlgorithms.{FIFOanalysis, LIFOanalysis, biggerEnvironmentFirstAnalysis, callDepthAnalysis, deepExpressionFirstAnalysis, depAnalysis, leastDependenciesFirstAnalysis, leastVisitedAnalysis, mostDependenciesFirstAnalysis, mostVisitedAnalysis, shallowExpressionsFirstAnalysis, smallerEnvironmentFirstAnalysis}
 import maf.cli.runnables.DynamicWorklistAlgorithms.{SchemeAnalysisWithDeps, call_dependencies_only, least_dependencies_first, liveAnalysis, liveAnalysis_CallsOnly_With_Check, liveAnalysis_CallsOnly_Without_Check, most_dependencies_first, randomAnalysis}
 import maf.core.Address
 import maf.language.scheme.{SchemeExp, SchemeParser}
@@ -84,11 +84,11 @@ class WorklistTests extends AnyFlatSpec with Matchers {
     analyzeProgram(program, smallerEnvironmentFirstAnalysis, "smallerEnvironmentFirstAnalysis") should equal(analyzeProgram(program, randomAnalysis, "randomAnalysis"))
   }
 
-  "The results of the liveAnalysis_CallsOnly and the random worklist heuristics" should "be equal" in new Fixture {
-    analyzeProgram(program, liveAnalysis_CallsOnly_Without_Check, "liveAnalysis_CallsOnly") should equal(analyzeProgram(program, randomAnalysis, "randomAnalysis"))
+  "The results of the liveAnalysis_CaliveAnalysis_CallsOnly_Without_CheckllsOnly and the random worklist heuristics" should "be equal" in new Fixture {
+    analyzeProgram(program, liveAnalysis_CallsOnly_Without_Check, "liveAnalysis_CallsOnly_Without_Check") should equal(analyzeProgram(program, randomAnalysis, "randomAnalysis"))
   }
 
-  "The results of the liveAnalysis_CallsOnly and the random worklist heuristics" should "be equal" in new Fixture {
-    analyzeProgram(program, liveAnalysis_CallsOnly_With_Check, "liveAnalysis_CallsOnly") should equal(analyzeProgram(program, randomAnalysis, "randomAnalysis"))
+  "The results of the liveAnalysis_CallsOnly_With_Check and the random worklist heuristics" should "be equal" in new Fixture {
+    analyzeProgram(program, liveAnalysis_CallsOnly_With_Check, "liveAnalysis_CallsOnly_With_Check") should equal(analyzeProgram(program, randomAnalysis, "randomAnalysis"))
   }
 }
