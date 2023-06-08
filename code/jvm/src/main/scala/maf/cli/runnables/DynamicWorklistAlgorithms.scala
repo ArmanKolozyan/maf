@@ -694,7 +694,7 @@ object DynamicWorklistAlgorithms extends App:
                     print(i)
                     val anl = makeAnalysis(program)
                     val (result, timeTaken) = timeAnalysis((name, program), anl, analysisType)
-                    (result.map(_._2).foldLeft(0)(_ + _), timeTaken)
+                    (result.map(_._2).foldLeft(0)(_ + _), timeTaken / 1000 * 1000)
                 )
                 .drop(warmup)
 
