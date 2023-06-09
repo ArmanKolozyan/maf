@@ -676,7 +676,7 @@ object DynamicWorklistAlgorithms extends App:
       ("LIFO", LIFOanalysis),
       ("LDP", least_dependencies_first),
       ("POC", call_dependencies_only_with_Tarjan),
-      ("LIVE", liveAnalysis),
+      //("LIVE", liveAnalysis),
       ("CAD", liveAnalysis_CallersOnly_With_Check),
       ("CED", liveAnalysis_CallersOnly_With_Check)
     )
