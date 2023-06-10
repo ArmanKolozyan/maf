@@ -668,6 +668,24 @@ object DynamicWorklistAlgorithms extends App:
       ("test/R5RS/WeiChenRompf2019/toplas98/boyer.scm", "boyer"),
       ("test/R5RS/various/SICP-compiler.scm", "SICP-compiler"),
       ("test/R5RS/icp/icp_8_compiler.scm", "compiler"),
+      // Gabriel
+      ("test/R5RS/gabriel/triangl.scm", "triangl"),
+      ("test/R5RS/gabriel/browse.scm", "browse"),
+      ("test/R5RS/gabriel/diviter.scm", "diviter"),
+      ("test/R5RS/gabriel/cpstak.scm", "cpstak"),
+      ("test/R5RS/gabriel/divrec.scm", "divrec"),
+      ("test/R5RS/gabriel/dderiv.scm", "dderiv"),
+      ("test/R5RS/gabriel/destruc.scm", "destruct"),
+      ("test/R5RS/gabriel/deriv.scm", "deriv"),
+      ("test/R5RS/gabriel/takl.scm", "takl"),
+      ("test/R5RS/gabriel/puzzle.scm", "puzzle"),
+      // Other
+      ("test/R5RS/VUB-projects/railway-control-system.scm", "railway-control-system"),
+      ("test/R5RS/VUB-projects/frogger.scm", "frogger"),
+      ("test/R5RS/various/pico.scm", "pico"),
+      ("test/R5RS/github/google-schism.scm", "google-schism"),
+      ("test/R5RS/gambit/matrix.scm", "matrix"),
+      ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "icp_1c_prime-sum-pair")
     ).toMap
 
     val analyses = List(
@@ -701,10 +719,10 @@ object DynamicWorklistAlgorithms extends App:
             println()
             // Compute metrics
             val stats = Statistics.all(results.map(_._2).toList)
-            outputTable = outputTable.add(s"${name}_$analysisType", "time_mean", stats.mean)
-            outputTable = outputTable.add(s"${name}_$analysisType", "time_stdev", stats.stddev)
-            outputTable = outputTable.add(s"${name}_$analysisType", "time_median", stats.median)
-            outputTable = outputTable.add(s"${name}_$analysisType", "# iterations", results.head._1)
+            outputTable = outputTable.add(s"${name}%%$analysisType", "time_mean", stats.mean)
+            outputTable = outputTable.add(s"${name}%%$analysisType", "time_stdev", stats.stddev)
+            outputTable = outputTable.add(s"${name}%%$analysisType", "time_median", stats.median)
+            outputTable = outputTable.add(s"${name}%%$analysisType", "# iterations", results.head._1)
 
             // Flush the output table to a file
             val outputString = outputTable.toCSVString()
