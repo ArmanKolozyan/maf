@@ -680,10 +680,10 @@ object DynamicWorklistAlgorithms extends App:
       ("test/R5RS/gabriel/takl.scm", "takl"),
       ("test/R5RS/gabriel/puzzle.scm", "puzzle"),
       // Other
-      ("test/R5RS/VUB-projects/railway-control-system.scm", "railway-control-system"),
-      ("test/R5RS/VUB-projects/frogger.scm", "frogger"),
+      //("test/R5RS/VUB-projects/railway-control-system.scm", "railway-control-system"),
+      //("test/R5RS/VUB-projects/frogger.scm", "frogger"),
       ("test/R5RS/various/pico.scm", "pico"),
-      ("test/R5RS/github/google-schism.scm", "google-schism"),
+      //("test/R5RS/github/google-schism.scm", "google-schism"),
       ("test/R5RS/gambit/matrix.scm", "matrix"),
       ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "icp_1c_prime-sum-pair")
     ).toMap
