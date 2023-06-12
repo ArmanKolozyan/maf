@@ -714,7 +714,7 @@ object DynamicWorklistAlgorithms extends App:
     var outputTable: Table[Double] = Table.empty
     bench.toList
         .cartesian(analyses)
-        .cartesian((0 to 3).toList)
+        .cartesian((0 until 2).toList)
         .foreach { case (((filename, name), (analysisType, makeAnalysis)), k) =>
             print(s"Analyzing $filename with $analysisType with k=$k")
             val program = SchemeParser.parseProgram(Reader.loadFile(filename))
