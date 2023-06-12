@@ -29,10 +29,7 @@ import maf.core.Lattice
 import scala.util.Try
 
 object AnalyzeWorklistAlgorithms extends App:
-    val analyses = List((randomAnalysis, "RandomWorklistAlgorithm"), (depAnalysis, "DepAnalysis"))
-    val bench: Map[String, String] = List(
-      ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "prime-sum-pair"),
-    ).toMap
+    // val analyses = List((randomAnalysis, "RandomWorklistAlgorithm"), (depAnalysis, "DepAnalysis"))
     val warmup = 5
     val numIterations = 10
 
@@ -47,7 +44,8 @@ object AnalyzeWorklistAlgorithms extends App:
         def totalVarSize: Int = varAddrSize.values.foldLeft(0)(_ + _)
         def totalRetSize: Int = retAddrSize.values.foldLeft(0)(_ + _)
 
-    def computeSize[Adr, Vlu](store: Map[Adr, Vlu])(adr: Adr)(using Lattice[Vlu]): Int = ???
+    def computeSize[Adr, Vlu](store: Map[Adr, Vlu])(adr: Adr)(using lat: Lattice[Vlu]): Int =
+        lat.level(store.get(adr).getOrElse(lat.bottom))
 
     def timeAnalysis[A <: ModAnalysis[SchemeExp] & DependencyTracking[SchemeExp] & GlobalStore[SchemeExp]](
         bench: (String, SchemeExp),
@@ -72,29 +70,31 @@ object AnalyzeWorklistAlgorithms extends App:
             stats = AnalysisStats(analysis.analysis_stats_map.toMap, varAdrSize, retAddrSize)
         yield (stats, time.toDouble)
 
-    def randomAnalysis(program: SchemeExp) = new BasicAnalysis(program) with RandomWorklistAlgorithm[SchemeExp]
+    // def randomAnalysis(program: SchemeExp) = new BasicAnalysis(program) with RandomWorklistAlgorithm[SchemeExp]
 
-    def FIFOanalysis(program: SchemeExp) = new BasicAnalysis(program) with FIFOWorklistAlgorithm[SchemeExp]
+    def FIFOanalysis(theK: Int)(program: SchemeExp) = new BasicAnalysis(program) with FIFOWorklistAlgorithm[SchemeExp]:
+        val k = theK
 
-    def LIFOanalysis(program: SchemeExp) = new BasicAnalysis(program) with LIFOWorklistAlgorithm[SchemeExp]
+    def LIFOanalysis(theK: Int)(program: SchemeExp) = new BasicAnalysis(program) with LIFOWorklistAlgorithm[SchemeExp]:
+        val k = theK
 
-    def callDepthAnalysis(program: SchemeExp) = new BasicAnalysis(program) with CallDepthFirstWorklistAlgorithm[SchemeExp]
+    //def callDepthAnalysis(program: SchemeExp) = new BasicAnalysis(program) with CallDepthFirstWorklistAlgorithm[SchemeExp]
 
-    def leastVisitedAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastVisitedFirstWorklistAlgorithm[SchemeExp]
+    //def leastVisitedAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastVisitedFirstWorklistAlgorithm[SchemeExp]
 
-    def mostVisitedAnalysis(program: SchemeExp) = new BasicAnalysis(program) with MostVisitedFirstWorklistAlgorithm[SchemeExp]
+    //def mostVisitedAnalysis(program: SchemeExp) = new BasicAnalysis(program) with MostVisitedFirstWorklistAlgorithm[SchemeExp]
 
-    def deepExpressionFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with DeepExpressionsFirstWorklistAlgorithm[SchemeExp]
+    //def deepExpressionFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with DeepExpressionsFirstWorklistAlgorithm[SchemeExp]
 
-    def shallowExpressionsFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with ShallowExpressionsFirstWorklistAlgorithm[SchemeExp]
+    //def shallowExpressionsFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with ShallowExpressionsFirstWorklistAlgorithm[SchemeExp]
 
-    def mostDependenciesFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with MostDependenciesFirstWorklistAlgorithm[SchemeExp]
+    //def mostDependenciesFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with MostDependenciesFirstWorklistAlgorithm[SchemeExp]
 
-    def leastDependenciesFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastDependenciesFirstWorklistAlgorithm[SchemeExp]
+    //def leastDependenciesFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastDependenciesFirstWorklistAlgorithm[SchemeExp]
 
-    def biggerEnvironmentFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with BiggerEnvironmentFirstWorklistAlgorithm.ModF
+    //def biggerEnvironmentFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with BiggerEnvironmentFirstWorklistAlgorithm.ModF
 
-    def smallerEnvironmentFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with SmallerEnvironmentFirstWorklistAlgorithm.ModF
+    //def smallerEnvironmentFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with SmallerEnvironmentFirstWorklistAlgorithm.ModF
 
     def liveAnalysis_CallsOnly_With_Check(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
@@ -107,13 +107,13 @@ object AnalyzeWorklistAlgorithms extends App:
                 new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
         }
 
-    def depAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastDependenciesFirstWorklistAlgorithmPOC[SchemeExp]
+    //def depAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastDependenciesFirstWorklistAlgorithmPOC[SchemeExp]
 
     abstract class BasicAnalysis(program: SchemeExp)
         extends SimpleSchemeModFAnalysis(program)
         with SchemeConstantPropagationDomain
         with DependencyTracking[SchemeExp]
-        with SchemeModFNoSensitivity {
+        with SchemeModFKCallSiteSensitivity {
         override def intraAnalysis(cmp: SchemeModFComponent) =
             new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
     }

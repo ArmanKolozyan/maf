@@ -526,118 +526,130 @@ object DynamicWorklistAlgorithms extends App:
         val writeDependencies: GraphDeps = a.writeEffects
         (dependencies, readDependencies, writeDependencies)
 
-    def randomAnalysis(program: SchemeExp) =
+    def randomAnalysis(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with RandomWorklistAlgorithm[SchemeExp] {
+
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def least_dependencies_first(program: SchemeExp) =
+    def least_dependencies_first(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with LeastDependenciesFirstWorklistAlgorithmPOC[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def most_dependencies_first(program: SchemeExp) =
+    def most_dependencies_first(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with MostDependenciesFirstWorklistAlgorithmPOC[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def call_dependencies_only(program: SchemeExp) =
+    def call_dependencies_only(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with OnlyDependenciesFirstWorklistAlgorithmPOC[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def call_dependencies_only_with_Tarjan(program: SchemeExp) =
+    def call_dependencies_only_with_Tarjan(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with OnlyDependenciesFirstWorklistAlgorithmPOC_Tarjan[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def liveAnalysis(program: SchemeExp) =
+    def liveAnalysis(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with GlobalStore[SchemeExp]
             with LiveLeastDependenciesFirstWorklistAlgorithm[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
         }
 
-    def liveAnalysis_CallsOnly_With_Check(program: SchemeExp) =
+    def liveAnalysis_CallsOnly_With_Check(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with GlobalStore[SchemeExp]
             with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
         }
 
-    def liveAnalysis_CallersOnly_With_Check(program: SchemeExp) =
+    def liveAnalysis_CallersOnly_With_Check(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with GlobalStore[SchemeExp]
             with LiveLeastDependenciesFirstWorklistAlgorithm_CallersOnly_With_Check[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntraa
         }
 
-    def liveAnalysis_Main_Last(program: SchemeExp) =
+    def liveAnalysis_Main_Last(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with GlobalStore[SchemeExp]
             with Main_Last_Heuristic[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def liveAnalysis_CallsOnly_Without_Check(program: SchemeExp) =
+    def liveAnalysis_CallsOnly_Without_Check(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with GlobalStore[SchemeExp]
             with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_Without_Check[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntraaa
         }
 
-    def weirdest_analysis(program: SchemeExp) =
+    def weirdest_analysis(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
+            with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
             with GlobalStore[SchemeExp]
             with WeirdestHeuristic[SchemeExp] {
+            val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
@@ -702,7 +714,8 @@ object DynamicWorklistAlgorithms extends App:
     var outputTable: Table[Double] = Table.empty
     bench.toList
         .cartesian(analyses)
-        .foreach { case ((filename, name), (analysisType, makeAnalysis)) =>
+        .cartesian((0 to 3).toList)
+        .foreach { case (((filename, name), (analysisType, makeAnalysis)), k) =>
             print(s"Analyzing $filename with $analysisType ")
             val program = SchemeParser.parseProgram(Reader.loadFile(filename))
 
@@ -710,7 +723,7 @@ object DynamicWorklistAlgorithms extends App:
             val results = (1 to (warmup + numIterations))
                 .map(i =>
                     print(i)
-                    val anl = makeAnalysis(program)
+                    val anl = makeAnalysis(k)(program)
                     val (result, timeTaken) = timeAnalysis((name, program), anl, analysisType).get
                     (result.totalIterations, timeTaken / (1000 * 1000), result.totalVarSize, result.totalRetSize)
                 )
@@ -719,12 +732,12 @@ object DynamicWorklistAlgorithms extends App:
             println()
             // Compute metrics
             val stats = Statistics.all(results.map(_._2).toList)
-            outputTable = outputTable.add(s"${name}%%$analysisType", "time_mean", stats.mean)
-            outputTable = outputTable.add(s"${name}%%$analysisType", "time_stdev", stats.stddev)
-            outputTable = outputTable.add(s"${name}%%$analysisType", "time_median", stats.median)
-            outputTable = outputTable.add(s"${name}%%$analysisType", "# iterations", results.head._1)
-            outputTable = outputTable.add(s"${name}%%$analysisType", "var size", results.head._3)
-            outputTable = outputTable.add(s"${name}%%$analysisType", "ret size", results.head._4)
+            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", stats.mean)
+            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_stdev", stats.stddev)
+            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_median", stats.median)
+            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "# iterations", results.head._1)
+            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "var size", results.head._3)
+            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "ret size", results.head._4)
 
             // Flush the output table to a file
             val outputString = outputTable.toCSVString()
