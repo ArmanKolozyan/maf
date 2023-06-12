@@ -64,6 +64,7 @@ class IncrementalModularSchemeLattice[
 
     /** The actual lattice implementation for AL and A. */
     val incrementalSchemeLattice: IncrementalSchemeLattice[AL, A] = new IncrementalSchemeLattice[AL, A] {
+        def level(x: AL): scala.Int = Lattice[L].level(x.toL())
 
         /** Converts an elements from the non-annotated lattice to the annotated lattice. */
         private def annotate(als: L, sources: Sources): AL = AnnotatedElements(als, sources)

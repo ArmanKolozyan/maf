@@ -25,6 +25,8 @@ import scala.collection.mutable
 
 // null values are used here due to Java interop
 import scala.language.unsafeNulls
+import maf.core.Lattice
+import scala.util.Try
 
 object AnalyzeWorklistAlgorithms extends App:
     val analyses = List((randomAnalysis, "RandomWorklistAlgorithm"), (depAnalysis, "DepAnalysis"))
@@ -34,22 +36,41 @@ object AnalyzeWorklistAlgorithms extends App:
     val warmup = 5
     val numIterations = 10
 
-    def timeAnalysis[A <: ModAnalysis[SchemeExp]](bench: (String, SchemeExp), analysis: A, worklist: String): (mutable.Map[String, Int], Double) =
-        var time: Long = -1
-        //  println(s"Analysis of ${bench._1} with heuristic $worklist")
-        try {
-            time = Timer.timeOnly {
-                analysis.analyze()
-            }
-            //   println(s"terminated in ${time / 1000000} ms.")
-        } catch {
-            case t: Throwable =>
-                println(s"raised exception.")
-                System.err.println(t.getMessage)
-                t.printStackTrace()
-                System.err.flush()
-        }
-        (analysis.analysis_stats_map, time)
+    case class AnalysisStats(
+        /** Contains information about the number of intra-analysis iterations for each component */
+        iterationsPerComponent: Map[String, Int],
+        /** Contains the "size" of the incoming flows from variables and function parameters */
+        varAddrSize: Map[String, Int],
+        /** Contains the "size" fo the incoming flows from return values */
+        retAddrSize: Map[String, Int]):
+        def totalIterations: Int = iterationsPerComponent.values.foldLeft(0)(_ + _)
+        def totalVarSize: Int = varAddrSize.values.foldLeft(0)(_ + _)
+        def totalRetSize: Int = retAddrSize.values.foldLeft(0)(_ + _)
+
+    def computeSize[Adr, Vlu](store: Map[Adr, Vlu])(adr: Adr)(using Lattice[Vlu]): Int = ???
+
+    def timeAnalysis[A <: ModAnalysis[SchemeExp] & DependencyTracking[SchemeExp] & GlobalStore[SchemeExp]](
+        bench: (String, SchemeExp),
+        analysis: A,
+        worklist: String
+      ): Option[(AnalysisStats, Double)] =
+        for
+            time <- Try(Timer.timeOnly { analysis.analyze() }).toOption
+            // compute the "size" for each variable address in the program
+            varAdrSize = analysis.readDependencies.map { case (cmp, adrs) =>
+                (cmp.toString -> adrs
+                    .collect { case v @ VarAddr(_, _) => v }
+                    .map(computeSize[analysis.Addr, analysis.Value](analysis.store))
+                    .foldLeft(0)(_ + _))
+            }.toMap
+            retAddrSize = analysis.readDependencies.map { case (cmp, adrs) =>
+                (cmp.toString -> adrs
+                    .collect { case v @ ReturnAddr(_, _) => v }
+                    .map(computeSize[analysis.Addr, analysis.Value](analysis.store))
+                    .foldLeft(0)(_ + _))
+            }.toMap
+            stats = AnalysisStats(analysis.analysis_stats_map.toMap, varAdrSize, retAddrSize)
+        yield (stats, time.toDouble)
 
     def randomAnalysis(program: SchemeExp) = new BasicAnalysis(program) with RandomWorklistAlgorithm[SchemeExp]
 

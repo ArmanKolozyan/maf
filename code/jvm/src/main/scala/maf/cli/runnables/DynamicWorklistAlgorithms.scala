@@ -711,8 +711,8 @@ object DynamicWorklistAlgorithms extends App:
                 .map(i =>
                     print(i)
                     val anl = makeAnalysis(program)
-                    val (result, timeTaken) = timeAnalysis((name, program), anl, analysisType)
-                    (result.map(_._2).foldLeft(0)(_ + _), timeTaken / (1000 * 1000))
+                    val (result, timeTaken) = timeAnalysis((name, program), anl, analysisType).get
+                    (result.totalIterations, timeTaken / (1000 * 1000), result.totalVarSize, result.totalRetSize)
                 )
                 .drop(warmup)
 
@@ -723,6 +723,8 @@ object DynamicWorklistAlgorithms extends App:
             outputTable = outputTable.add(s"${name}%%$analysisType", "time_stdev", stats.stddev)
             outputTable = outputTable.add(s"${name}%%$analysisType", "time_median", stats.median)
             outputTable = outputTable.add(s"${name}%%$analysisType", "# iterations", results.head._1)
+            outputTable = outputTable.add(s"${name}%%$analysisType", "var size", results.head._3)
+            outputTable = outputTable.add(s"${name}%%$analysisType", "ret size", results.head._4)
 
             // Flush the output table to a file
             val outputString = outputTable.toCSVString()
