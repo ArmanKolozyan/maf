@@ -14,6 +14,11 @@ object ListOps:
             case Nil       => Some(Nil)
             case (x :: xs) => x.flatMap(x => xs.sequence.map(x :: _))
 
+    extension [X](v: List[X])
+        def mapM[Y](f: X => Option[Y]): Option[List[Y]] = v match
+            case Nil       => Some(Nil)
+            case (x :: xs) => f(x).flatMap(x => xs.mapM(f).map(x :: _))
+
     implicit class Filterable[X](xs: List[X]):
         def filterDuplicates: List[X] =
             var seen: Set[X] = Set()

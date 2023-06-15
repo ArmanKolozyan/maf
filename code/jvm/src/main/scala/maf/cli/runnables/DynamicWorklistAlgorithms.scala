@@ -720,16 +720,14 @@ object DynamicWorklistAlgorithms extends App:
             val program = SchemeParser.parseProgram(Reader.loadFile(filename))
 
             // Run
-            val results: Option[List[(Double, Double, Double, Double)]] = (1 to (warmup + numIterations))
-                .map(i =>
+            val results: Option[List[(Double, Double, Double, Double)]] = (1 to (warmup + numIterations)).toList
+                .mapM(i =>
                     print(i)
                     val anl = makeAnalysis(k)(program)
                     timeAnalysis((name, program), anl, analysisType).map { case (result, timeTaken) =>
                         (result.totalIterations.toDouble, timeTaken / (1000 * 1000), result.totalVarSize.toDouble, result.totalRetSize.toDouble)
                     }
                 )
-                .toList
-                .sequence
                 .map(_.drop(warmup))
 
             println()
