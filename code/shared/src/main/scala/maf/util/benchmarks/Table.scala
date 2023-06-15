@@ -9,6 +9,17 @@ object Table:
      */
     def empty[V]: Table[V] = Table(Map[(String, String), V](), None)
 
+    /**
+     * Create an empty table with the given default
+     *
+     * @param default
+     *   the default value of the table
+     *
+     * @return
+     *   a new empty table
+     */
+    def empty[V](default: V): Table[V] = Table(Map[(String, String), V](), Some(default))
+
 case class Table[V](data: Map[(String, String), V], default: Option[V]):
 
     /**

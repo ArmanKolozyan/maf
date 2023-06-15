@@ -9,6 +9,11 @@ object ListOps:
             y <- ys
         yield (x, y)
 
+    extension [X](v: List[Option[X]])
+        def sequence: Option[List[X]] = v match
+            case Nil       => Some(Nil)
+            case (x :: xs) => x.flatMap(x => xs.sequence.map(x :: _))
+
     implicit class Filterable[X](xs: List[X]):
         def filterDuplicates: List[X] =
             var seen: Set[X] = Set()

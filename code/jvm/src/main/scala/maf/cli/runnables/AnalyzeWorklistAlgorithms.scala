@@ -27,6 +27,7 @@ import scala.collection.mutable
 import scala.language.unsafeNulls
 import maf.core.Lattice
 import scala.util.Try
+import java.util.concurrent.TimeoutException
 
 object AnalyzeWorklistAlgorithms extends App:
     // val analyses = List((randomAnalysis, "RandomWorklistAlgorithm"), (depAnalysis, "DepAnalysis"))
@@ -53,7 +54,10 @@ object AnalyzeWorklistAlgorithms extends App:
         worklist: String
       ): Option[(AnalysisStats, Double)] =
         for
-            time <- Try(Timer.timeOnly { analysis.analyze() }).toOption
+            time <- Try(Timer.timeOnly {
+                analysis.analyzeWithTimeout(Timeout.start(5.minutes))
+                if !analysis.finished then throw TimeoutException()
+            }).toOption
             // compute the "size" for each variable address in the program
             varAdrSize = analysis.readDependencies.map { case (cmp, adrs) =>
                 (cmp.toString -> adrs

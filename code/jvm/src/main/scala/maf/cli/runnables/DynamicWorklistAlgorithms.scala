@@ -711,7 +711,7 @@ object DynamicWorklistAlgorithms extends App:
       ("CED", liveAnalysis_CallersOnly_With_Check)
     )
 
-    var outputTable: Table[Double] = Table.empty
+    var outputTable: Table[Option[Double]] = Table.empty(default = None)
     bench.toList
         .cartesian(analyses)
         .cartesian((0 until 2).toList)
@@ -720,27 +720,37 @@ object DynamicWorklistAlgorithms extends App:
             val program = SchemeParser.parseProgram(Reader.loadFile(filename))
 
             // Run
-            val results = (1 to (warmup + numIterations))
+            val results: Option[List[(Double, Double, Double, Double)]] = (1 to (warmup + numIterations))
                 .map(i =>
                     print(i)
                     val anl = makeAnalysis(k)(program)
-                    val (result, timeTaken) = timeAnalysis((name, program), anl, analysisType).get
-                    (result.totalIterations, timeTaken / (1000 * 1000), result.totalVarSize, result.totalRetSize)
+                    timeAnalysis((name, program), anl, analysisType).map { case (result, timeTaken) =>
+                        (result.totalIterations.toDouble, timeTaken / (1000 * 1000), result.totalVarSize.toDouble, result.totalRetSize.toDouble)
+                    }
                 )
-                .drop(warmup)
+                .toList
+                .sequence
+                .map(_.drop(warmup))
 
             println()
-            // Compute metrics
-            val stats = Statistics.all(results.map(_._2).toList)
-            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", stats.mean)
-            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_stdev", stats.stddev)
-            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_median", stats.median)
-            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "# iterations", results.head._1)
-            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "var size", results.head._3)
-            outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "ret size", results.head._4)
 
-            // Flush the output table to a file
-            val outputString = outputTable.toCSVString()
+            // Compute metrics
+            if results.isDefined then
+                val stats = Statistics.all(results.get.map(_._2).toList)
+                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", Some(stats.mean))
+                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_stdev", Some(stats.stddev))
+                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_median", Some(stats.median))
+                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "# iterations", Some(results.get.head._1))
+                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "var size", Some(results.get.head._3))
+                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "ret size", Some(results.get.head._4))
+            else outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", None)
+
+            // Construct the output table and flush the output table to a file
+            val outputString = outputTable.toCSVString(format = {
+                case Some(v) => v.toString
+                case None    => "TIMEOUT"
+            })
+
             val file = Writer.open("output/results.csv")
             Writer.write(file, outputString)
             Writer.close(file)
