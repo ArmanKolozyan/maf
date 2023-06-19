@@ -673,13 +673,15 @@ object DynamicWorklistAlgorithms extends App:
     val bench: Map[String, String] = List(
       ("test/R5RS/gambit/scheme.scm", "scheme"),
       ("test/R5RS/icp/icp_7_eceval.scm", "eceval"),
+      ("test/R5RS/icp/icp_1c_multiple-dwelling.scm", "multiple-dwelling"),
       ("test/R5RS/gambit/sboyer.scm", "sboyer"),
       ("test/R5RS/gambit/peval.scm", "peval"),
-      ("test/R5RS/icp/icp_1c_multiple-dwelling.scm", "multiple-dwelling"),
       ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "prime-sum-pair"),
       ("test/R5RS/WeiChenRompf2019/toplas98/boyer.scm", "boyer"),
       ("test/R5RS/various/SICP-compiler.scm", "SICP-compiler"),
       ("test/R5RS/icp/icp_8_compiler.scm", "compiler"),
+      ("test/R5RS/scp1/family-budget.scm", "family-budget"),
+      ("test/R5RS/scp1/draw-umbrella.scm", "draw-umbrella"),
       // Gabriel
       ("test/R5RS/gabriel/triangl.scm", "triangl"),
       ("test/R5RS/gabriel/browse.scm", "browse"),
