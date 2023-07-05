@@ -37,8 +37,9 @@ import scala.math.abs
 import maf.util.datastructures.ListOps.*
 import maf.util.benchmarks.Table
 import maf.util.Writer
+import maf.cli.experiments.worklist.ProgramGenerator
 
-object DynamicWorklistAlgorithms extends App:
+object DynamicWorklistAlgorithms:
 
     trait LeastDependenciesFirstWorklistAlgorithmPOC[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
         var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
@@ -670,7 +671,91 @@ object DynamicWorklistAlgorithms extends App:
         sum
     }
 
-    val bench: Map[String, String] = List(
+    val analyses = List(
+      ("random", randomAnalysis),
+      ("FIFO", FIFOanalysis),
+      ("LIFO", LIFOanalysis),
+      ("LDP", least_dependencies_first),
+      ("POC", call_dependencies_only_with_Tarjan),
+      //("LIVE", liveAnalysis),
+      ("CAD", liveAnalysis_CallersOnly_With_Check),
+      ("CED", liveAnalysis_CallersOnly_With_Check)
+    )
+
+    type Analysis = SimpleSchemeModFAnalysis & DependencyTracking[SchemeExp]
+
+    def benchmark(
+        bench: Map[String, String],
+        analyses: List[(String, Int => SchemeExp => Analysis)]
+      )(
+        output: String,
+        loadFile: (String => String) = Reader.loadFile
+      ): Unit =
+        var outputTable: Table[Option[Double]] = Table.empty(default = None)
+        bench.toList
+            .cartesian(analyses)
+            .cartesian((0 until 2).toList)
+            .foreach { case (((filename, name), (analysisType, makeAnalysis)), k) =>
+                print(s"Analyzing $name with $analysisType with k=$k")
+                val program = SchemeParser.parseProgram(loadFile(filename))
+
+                // Run
+                val results: Option[List[(Double, Double, Double, Double)]] = (1 to (warmup + numIterations)).toList
+                    .mapM(i =>
+                        print(i)
+                        val anl = makeAnalysis(k)(program)
+                        timeAnalysis((name, program), anl, analysisType).map { case (result, timeTaken) =>
+                            (result.totalIterations.toDouble, timeTaken / (1000 * 1000), result.totalVarSize.toDouble, result.totalRetSize.toDouble)
+                        }
+                    )
+                    .map(_.drop(warmup))
+
+                println()
+
+                // Compute metrics
+                if results.isDefined then
+                    val stats = Statistics.all(results.get.map(_._2).toList)
+                    outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", Some(stats.mean))
+                    outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_stdev", Some(stats.stddev))
+                    outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_median", Some(stats.median))
+                    outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "# iterations", Some(results.get.head._1))
+                    outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "var size", Some(results.get.head._3))
+                    outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "ret size", Some(results.get.head._4))
+                else outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", None)
+
+                // Construct the output table and flush the output table to a file
+                val outputString = outputTable.toCSVString(format = {
+                    case Some(v) => v.toString
+                    case None    => "TIMEOUT"
+                })
+
+                val file = Writer.open("output/results.csv")
+                Writer.write(file, outputString)
+                Writer.close(file)
+            }
+
+    abstract class BenchmarkSuite:
+        val benchmarks: Map[String, String]
+        def load(name: String): String
+
+    case class RealWorld(benchmarks: Map[String, String]) extends BenchmarkSuite:
+        def load(name: String): String = Reader.loadFile(name)
+
+    case class Synthetic(benchmarks: Map[String, String]) extends BenchmarkSuite:
+        def load(name: String): String = name
+
+    private val suites: Map[String, BenchmarkSuite] = Map(
+      "all" -> RealWorld(bench),
+      "synthetic" -> Synthetic(synth),
+    )
+
+    private lazy val synth: Map[String, String] =
+        // Generate inflow1 programs with varying number of components
+        val upflow1s = (1 to 100).map(i => (ProgramGenerator.upflow(i), "upflow1%%" + (i.toString)))
+        val upflow2s = (1 to 100).map(i => (ProgramGenerator.upflow2(i), "upflow2%%" + (i.toString)))
+        (upflow1s ++ upflow2s).toMap
+
+    private val bench: Map[String, String] = List(
       ("test/R5RS/gambit/scheme.scm", "scheme"),
       ("test/R5RS/icp/icp_7_eceval.scm", "eceval"),
       ("test/R5RS/icp/icp_1c_multiple-dwelling.scm", "multiple-dwelling"),
@@ -702,56 +787,13 @@ object DynamicWorklistAlgorithms extends App:
       ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "icp_1c_prime-sum-pair")
     ).toMap
 
-    val analyses = List(
-      ("random", randomAnalysis),
-      ("FIFO", FIFOanalysis),
-      ("LIFO", LIFOanalysis),
-      ("LDP", least_dependencies_first),
-      ("POC", call_dependencies_only_with_Tarjan),
-      //("LIVE", liveAnalysis),
-      ("CAD", liveAnalysis_CallersOnly_With_Check),
-      ("CED", liveAnalysis_CallersOnly_With_Check)
-    )
-
-    var outputTable: Table[Option[Double]] = Table.empty(default = None)
-    bench.toList
-        .cartesian(analyses)
-        .cartesian((0 until 2).toList)
-        .foreach { case (((filename, name), (analysisType, makeAnalysis)), k) =>
-            print(s"Analyzing $filename with $analysisType with k=$k")
-            val program = SchemeParser.parseProgram(Reader.loadFile(filename))
-
-            // Run
-            val results: Option[List[(Double, Double, Double, Double)]] = (1 to (warmup + numIterations)).toList
-                .mapM(i =>
-                    print(i)
-                    val anl = makeAnalysis(k)(program)
-                    timeAnalysis((name, program), anl, analysisType).map { case (result, timeTaken) =>
-                        (result.totalIterations.toDouble, timeTaken / (1000 * 1000), result.totalVarSize.toDouble, result.totalRetSize.toDouble)
-                    }
-                )
-                .map(_.drop(warmup))
-
-            println()
-
-            // Compute metrics
-            if results.isDefined then
-                val stats = Statistics.all(results.get.map(_._2).toList)
-                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", Some(stats.mean))
-                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_stdev", Some(stats.stddev))
-                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_median", Some(stats.median))
-                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "# iterations", Some(results.get.head._1))
-                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "var size", Some(results.get.head._3))
-                outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "ret size", Some(results.get.head._4))
-            else outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", None)
-
-            // Construct the output table and flush the output table to a file
-            val outputString = outputTable.toCSVString(format = {
-                case Some(v) => v.toString
-                case None    => "TIMEOUT"
-            })
-
-            val file = Writer.open("output/results.csv")
-            Writer.write(file, outputString)
-            Writer.close(file)
-        }
+    def main(args: Array[String]): Unit =
+        if args.isEmpty then println("No benchmark suites to execute")
+        else
+            val found = args.filter(name => !suites.contains(name))
+            if found.length > 0 then println(s"Could not find the following benchmark suites: ${found.mkString(",")}")
+            else
+                args.foreach { arg =>
+                    val suite = suites(arg)
+                    benchmark(suite.benchmarks, analyses)(s"output/${arg}_out.csv", suite.load)
+                }
