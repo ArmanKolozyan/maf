@@ -672,14 +672,14 @@ object DynamicWorklistAlgorithms:
     }
 
     val analyses = List(
-      ("random", randomAnalysis),
+      //("random", randomAnalysis),
       ("FIFO", FIFOanalysis),
       ("LIFO", LIFOanalysis),
-      ("LDP", least_dependencies_first),
-      ("POC", call_dependencies_only_with_Tarjan),
+      //("LDP", least_dependencies_first),
+      //("POC", call_dependencies_only_with_Tarjan),
       //("LIVE", liveAnalysis),
-      ("CAD", liveAnalysis_CallersOnly_With_Check),
-      ("CED", liveAnalysis_CallersOnly_With_Check)
+      //("CAD", liveAnalysis_CallersOnly_With_Check),
+      //("CED", liveAnalysis_CallersOnly_With_Check)
     )
 
     type Analysis = SimpleSchemeModFAnalysis & DependencyTracking[SchemeExp]
@@ -694,7 +694,7 @@ object DynamicWorklistAlgorithms:
         var outputTable: Table[Option[Double]] = Table.empty(default = None)
         bench.toList
             .cartesian(analyses)
-            .cartesian((0 until 2).toList)
+            .cartesian((0 until 1).toList)
             .foreach { case (((filename, name), (analysisType, makeAnalysis)), k) =>
                 print(s"Analyzing $name with $analysisType with k=$k")
                 val program = SchemeParser.parseProgram(loadFile(filename))
@@ -751,7 +751,7 @@ object DynamicWorklistAlgorithms:
 
     private lazy val synth: Map[String, String] =
         // Generate inflow1 programs with varying number of components
-        val upflow1s = (1 to 100).map(i => (ProgramGenerator.upflow(i), "upflow1%%" + (i.toString)))
+        val upflow1s = List() // (1 to 100).map(i => (ProgramGenerator.upflow(i), "upflow1%%" + (i.toString)))
         val upflow2s = (1 to 100).map(i => (ProgramGenerator.upflow2(i), "upflow2%%" + (i.toString)))
         (upflow1s ++ upflow2s).toMap
 

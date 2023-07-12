@@ -32,7 +32,7 @@ import java.util.concurrent.TimeoutException
 object AnalyzeWorklistAlgorithms extends App:
     // val analyses = List((randomAnalysis, "RandomWorklistAlgorithm"), (depAnalysis, "DepAnalysis"))
     val warmup = 5
-    val numIterations = 10
+    val numIterations = 3
 
     case class AnalysisStats(
         /** Contains information about the number of intra-analysis iterations for each component */

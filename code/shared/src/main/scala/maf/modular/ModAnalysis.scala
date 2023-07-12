@@ -65,7 +65,7 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
     type Component <: Serializable
     def initialComponent: Component
     def expr(cmp: Component): Expr
-    
+
     var counter: Int = 0
 
     var timeMap: Map[String, Double] = Map()
@@ -110,7 +110,7 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
         var R: Set[Dependency] = Set()
 
         /** Set of dependencies written (triggered) by this intra-component analysis. */
-        var W: Set[Dependency] = Set()
+        var W: List[Dependency] = List()
 
         /** Set of components discovered by this intra-component analysis. */
         var C: Set[Component] = Set()
@@ -119,7 +119,8 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
         def register(dep: Dependency): Unit = R += dep
 
         /** Triggers a written dependency. */
-        def trigger(dep: Dependency): Unit = W += dep
+        def trigger(dep: Dependency): Unit =
+            if !W.contains(dep) then W ::= dep
 
         /** Spawns a discovered component. */
         def spawn(cmp: Component): Unit = C += cmp

@@ -2,7 +2,9 @@ package maf.cli.experiments.worklist
 
 object ProgramGenerator:
     private def defineSingleUpflow(n: Int) = s"""
-    |(define (do-$n l) (root l))
+    |(define (do-$n l)
+    | ${(1 to n).map(_ => s"(+ 1 1)").mkString("\n")}
+    | (root l))
     """
 
     /** Generates a program that has a large upflow of values. */

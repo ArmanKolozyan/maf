@@ -54,7 +54,7 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
         private def readDeps: Set[Address] =
             R.collect { case r: AddrDependency => r.addr }
         private def writeEffs: Set[Address] =
-            W.collect { case w: AddrDependency => w.addr }
+            W.collect { case w: AddrDependency => w.addr }.toSet
 
         override def commit(): Unit =
             super.commit()
