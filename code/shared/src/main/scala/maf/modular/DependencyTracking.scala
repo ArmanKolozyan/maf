@@ -6,10 +6,28 @@ import scala.collection.mutable
 // A common, but optional extension to ModAnalysis
 // Specifically, it keeps track of which components have spawned which other components
 trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =>
+
+    /** Calls */
     var dependencies: mutable.Map[Component, mutable.Set[Component]] = mutable.Map().withDefaultValue(mutable.Set.empty)
+
+    /** Read depdencies */
     var readDependencies: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
+
+    /** The writes performed by a component */
     var writeEffects: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
+
+    /**
+     * A mutable graph that represents the current dependency graph but where transitive depdency through an address is already computed, thereby
+     * mapping components to sets of components
+     */
     var graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
+
+    /** Track the number of times a dependency has been triggered by the analysis */
+    var dependencyTriggerCount: Map[Dependency, Int] = Map()
+
+    //
+    // Graph
+    //
 
     def addEdge(src: Component, dest: Component): Unit =
         graph.getOrElseUpdate(src, mutable.Set()) += dest
@@ -46,6 +64,14 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
 
     def graphToString: String =
         graph.map(from_to => from_to._1.toString + " -> " + from_to._2.map(_.toString).mkString(", ")).mkString("\n")
+
+    //
+    // Custom analysis for keeping track of dependencies
+    //
+
+    // Whenever a depdendency is triggered, update its count with 1
+    override def trigger(dep: Dependency): Unit =
+        dependencyTriggerCount.updatedWith(dep)(v => Some(v.map(_ + 1).getOrElse(0)))
 
     // update some rudimentary analysis results
     override def intraAnalysis(component: Component): DependencyTrackingIntra
