@@ -91,7 +91,8 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
     /** Keeps track of the components depending on a given "effect" (~ read dependencies). */
     var deps: Map[Dependency, Set[Component]] = Map[Dependency, Set[Component]]().withDefaultValue(Set.empty)
     def register(target: Component, dep: Dependency): Unit = deps += dep -> (deps(dep) + target)
-    def trigger(dep: Dependency): Unit = deps(dep).foreach(addToWorkList)
+    def trigger(dep: Dependency): Unit =
+        deps(dep).foreach(addToWorkList)
 
     /**
      * Performs a deep copy of this analysis.
@@ -135,7 +136,7 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
         def commit(): Unit =
             counter = counter + 1
             R.foreach(inter.register(component, _))
-            W.foreach(dep => if doWrite(dep) then inter.trigger(dep))
+            W.reverse.foreach(dep => if doWrite(dep) then inter.trigger(dep))
             C.foreach(inter.spawn(_, component))
 
         /** Called upon a commit for every written dependency. Returns a boolean indicating whether the global analysis state was modified. */

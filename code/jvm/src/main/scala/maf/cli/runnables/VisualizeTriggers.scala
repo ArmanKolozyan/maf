@@ -7,6 +7,9 @@ import maf.cli.runnables.AnalyzeWorklistAlgorithms.FIFOanalysis
 import maf.cli.runnables.AnalyzeWorklistAlgorithms.LIFOanalysis
 import maf.util.MapUtil.invert
 import maf.modular.Dependency
+import maf.modular.AddrDependency
+import maf.util.Writer
+import maf.modular.scheme.PrmAddr
 
 /**
  * Utility to visualize the dependency graph using GraphViz.
@@ -19,19 +22,29 @@ object VisualizeTriggers:
 
     type Exp = SchemeExp
 
-    private val programText: String = ProgramGenerator.upflow2(10)
+    private val programText: String = ProgramGenerator.upflow2(6)
 
     private val analyses: Map[String, (Exp) => DynamicWorklistAlgorithms.Analysis] = Map(
       "FIFO" -> FIFOanalysis(theK = 0),
-      "LIFO" -> LIFOanalysis(theK = 0)
+      "LIFO" -> LIFOanalysis(theK = 0),
+      "INFLOW" -> deprioritizeLargeInflow(theK = 0)
     )
 
-    private def toDot(nodes: Map[String, Set[String]], count: Map[Dependency, Int]): Unit = ???
+    private def lookupCount(adr: String)(count: Map[Dependency, Int]): Option[Int] =
+        count.collectFirst { case (AddrDependency(foundAdr), c) if foundAdr.toString == adr => c }
+
+    private def toDot(edges: Map[String, Set[String]], count: Map[Dependency, Int]): String =
+        val edgeString = edges
+            .map { case (from, tos) =>
+                val theCount = lookupCount(from)(count).getOrElse(1)
+                tos.map(to => s"\"$from\" -> \"$to\" [penwidth=$theCount];").mkString("\n")
+            }
+            .mkString("\n")
+
+        s"digraph { $edgeString }"
 
     def main(args: Array[String]): Unit =
-        if args.size < 1 then
-            println("USAGE: maf ANALYSIS")
-            System.exit(1)
+        if args.size < 1 then println("USAGE: maf ANALYSIS")
         else
             // selected the appropriate analysis
             val selected = analyses(args(0))
@@ -42,6 +55,12 @@ object VisualizeTriggers:
             // run the analysis
             anl.analyze()
             println("Analysis completed... Constructing graph.")
-            val reads: Map[String, Set[String]] = anl.readDependencies.invert.map { case (k, v) => (k.toString, v.map(_.toString)) }.toMap
+            val reads: Map[String, Set[String]] = anl.readDependencies.invert
+                .filter { case (PrmAddr(_), _) => false; case _ => true }
+                .map { case (k, v) => (k.toString, v.map(_.toString)) }
+                .toMap
             val wrts: Map[String, Set[String]] = anl.writeEffects.map { case (k, v) => (k.toString, v.map(_.toString)) }.toMap
-            toDot(reads ++ wrts, anl.dependencyTriggerCount)
+            val contents = toDot(reads ++ wrts, anl.dependencyTriggerCount)
+            val w = Writer.openTimeStamped("output/output.dot")
+            Writer.write(w, contents)
+            Writer.close(w)

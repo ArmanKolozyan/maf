@@ -38,6 +38,8 @@ import maf.util.datastructures.ListOps.*
 import maf.util.benchmarks.Table
 import maf.util.Writer
 import maf.cli.experiments.worklist.ProgramGenerator
+import maf.modular.AddrDependency
+import maf.util.MapUtil.invert
 
 object DynamicWorklistAlgorithms:
 
@@ -572,6 +574,29 @@ object DynamicWorklistAlgorithms:
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
+    def deprioritizeLargeInflow(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTracking[SchemeExp]
+            with PriorityQueueWorklistAlgorithm[SchemeExp] {
+            val k = theK
+
+            lazy val ordering: Ordering[Component] = Ordering.by(cmp => priorities(cmp))(Ordering.Int)
+            private var priorities: Map[Component, Int] = Map().withDefaultValue(0)
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra:
+                    override def commit(): Unit =
+                        super.commit()
+                        priorities = readDependencies.invert.foldLeft(Map[Component, Int]().withDefaultValue(0)) { case (result, (adr, cmps)) =>
+                            cmps.foldLeft(result)((result, cmp) =>
+                                val count = dependencyTriggerCount.get(AddrDependency(adr)).getOrElse(0)
+                                result.updatedWith(cmp)(v => Some(v.map(_ - count).getOrElse(-count)))
+                            )
+                        }
+        }
+
     def call_dependencies_only_with_Tarjan(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
@@ -675,6 +700,7 @@ object DynamicWorklistAlgorithms:
       //("random", randomAnalysis),
       ("FIFO", FIFOanalysis),
       ("LIFO", LIFOanalysis),
+      ("INFLOW", deprioritizeLargeInflow)
       //("LDP", least_dependencies_first),
       //("POC", call_dependencies_only_with_Tarjan),
       //("LIVE", liveAnalysis),

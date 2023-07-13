@@ -71,7 +71,8 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
 
     // Whenever a depdendency is triggered, update its count with 1
     override def trigger(dep: Dependency): Unit =
-        dependencyTriggerCount.updatedWith(dep)(v => Some(v.map(_ + 1).getOrElse(0)))
+        super.trigger(dep)
+        dependencyTriggerCount = dependencyTriggerCount.updatedWith(dep)(v => Some(v.map(_ + 1).getOrElse(0)))
 
     // update some rudimentary analysis results
     override def intraAnalysis(component: Component): DependencyTrackingIntra

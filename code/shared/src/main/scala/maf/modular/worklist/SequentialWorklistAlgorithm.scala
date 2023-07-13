@@ -39,10 +39,10 @@ trait SequentialWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Expr]:
         // intraCount = intraCount + 1
         //println(s"Current: ${current}")
         val intra = intraAnalysis(current)
-      //  print(current.toString + "->")
-      //  println("----")
-      //  println(workList.toString)
-      //  println("----")
+        //  print(current.toString + "->")
+        //  println("----")
+        //  println(workList.toString)
+        //  println("----")
         val timeBefore: Double = timeout.time
         intra.analyzeWithTimeout(timeout)
         val timeTaken: Double = timeout.time - timeBefore
@@ -55,7 +55,7 @@ trait SequentialWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Expr]:
         else
             analysis_stats_map.updateWith(current_string) {
                 case Some(i) => Some(i + 1)
-                case None => Some(1)
+                case None    => Some(1)
             }
             // analysis finished properly => commit its changes to the global analysis state
             intra.commit()
@@ -105,12 +105,12 @@ trait PriorityQueueWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Exp
     def finished: Boolean = worklist.isEmpty
     // a single step in the worklist algorithm iteration
     def step(timeout: Timeout.T): Unit =
-     //   println("======= Step start")
+        //   println("======= Step start")
         // take the next component
-    //   print(s"$worklist ;")
+        //   print(s"$worklist ;")
 
         val current = pop()
-      //  println(current)
+        //  println(current)
         // do the intra-analysis
         val intra = intraAnalysis(current)
         val timeBefore: Double = timeout.time
@@ -119,19 +119,18 @@ trait PriorityQueueWorklistAlgorithm[Expr <: Expression] extends ModAnalysis[Exp
         val currentTime: Double = timeMap.getOrElse(current.toString, 0.0)
         timeMap = timeMap + (current.toString + expr(current).idn -> (currentTime + timeTaken))
         if timeout.reached then
-        // analysis timed out => we need to add it to the worklist again
+            // analysis timed out => we need to add it to the worklist again
             addToWorkList(current)
         else
             val current_string: String = current.toString
             analysis_stats_map.updateWith(current_string) {
                 case Some(i) => Some(i + 1)
-                case None => Some(1)
+                case None    => Some(1)
             }
-        // analysis finished properly => commit its changes to the global analysis state
+            // analysis finished properly => commit its changes to the global analysis state
             intra.commit()
 
-      //  println("======= Step end")
-
+    //  println("======= Step end")
 
     // step until worklist is empty or timeout is reached
     def run(timeout: Timeout.T): Unit =
