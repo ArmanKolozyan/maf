@@ -798,7 +798,7 @@ object DynamicWorklistAlgorithms:
         val upflow2s = (1 to 100).map(i => (ProgramGenerator.upflow2(i), "upflow2%%" + (i.toString)))
         (upflow1s ++ upflow2s).toMap
 
-    private val bench: Map[String, String] = List(
+    private lazy val bench: Map[String, String] = List(
       ("test/R5RS/gambit/scheme.scm", "scheme"),
       ("test/R5RS/icp/icp_7_eceval.scm", "eceval"),
       ("test/R5RS/icp/icp_1c_multiple-dwelling.scm", "multiple-dwelling"),
