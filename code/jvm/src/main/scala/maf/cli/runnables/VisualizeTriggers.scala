@@ -27,7 +27,8 @@ object VisualizeTriggers:
     private val analyses: Map[String, (Exp) => DynamicWorklistAlgorithms.Analysis] = Map(
       "FIFO" -> FIFOanalysis(theK = 0),
       "LIFO" -> LIFOanalysis(theK = 0),
-      "INFLOW" -> deprioritizeLargeInflow(theK = 0)
+      "INFLOW" -> deprioritizeLargeInflow(theK = 0),
+      "FAIR" -> fairness(theK = 0)
     )
 
     private def lookupCount(adr: String)(count: Map[Dependency, Int]): Option[Int] =

@@ -597,6 +597,22 @@ object DynamicWorklistAlgorithms:
                         }
         }
 
+    def fairness(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTracking[SchemeExp]
+            with PriorityQueueWorklistAlgorithm[SchemeExp] {
+            val k = theK
+
+            lazy val ordering: Ordering[Component] = Ordering.by(cmp => counts(cmp))(Ordering.Int)
+            private var counts: Map[Component, Int] = Map().withDefaultValue(0)
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                counts = counts.updatedWith(cmp)(v => Some(v.getOrElse(0) - 1))
+                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
+        }
+
     def call_dependencies_only_with_Tarjan(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
@@ -700,7 +716,8 @@ object DynamicWorklistAlgorithms:
       //("random", randomAnalysis),
       ("FIFO", FIFOanalysis),
       ("LIFO", LIFOanalysis),
-      ("INFLOW", deprioritizeLargeInflow)
+      ("INFLOW", deprioritizeLargeInflow),
+      ("FAIR", fairness)
       //("LDP", least_dependencies_first),
       //("POC", call_dependencies_only_with_Tarjan),
       //("LIVE", liveAnalysis),
