@@ -597,6 +597,35 @@ object DynamicWorklistAlgorithms:
                         }
         }
 
+    def jens(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTracking[SchemeExp]
+            with PriorityQueueWorklistAlgorithm[SchemeExp] {
+            val k = theK
+
+            lazy val ordering: Ordering[Component] = Ordering.by(cmp => priorities(cmp))(Ordering.Int)
+            private var priorities: Map[Component, Int] = Map().withDefaultValue(0)
+            private var a: Map[Component, Int] = Map().withDefaultValue(0)
+            private var i: Map[Component, Int] = Map().withDefaultValue(0)
+            private var x: Int = 0
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra:
+                    override def commit(): Unit =
+                        super.commit()
+                        a = a.updatedWith(cmp)(v => Some(v.getOrElse(0) - 1))
+                        x = visited.size
+                        i = readDependencies.invert.foldLeft(Map[Component, Int]().withDefaultValue(0)) { case (result, (adr, cmps)) =>
+                            cmps.foldLeft(result)((result, cmp) =>
+                                val count = dependencyTriggerCount.get(AddrDependency(adr)).getOrElse(0)
+                                result.updatedWith(cmp)(v => Some(v.map(_ - count).getOrElse(-count)))
+                            )
+                        }
+                        priorities = priorities.updated(cmp, -i(cmp) + (a(cmp) * (x)) / 2)
+
+        }
     def fairness(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
@@ -717,7 +746,8 @@ object DynamicWorklistAlgorithms:
       ("FIFO", FIFOanalysis),
       ("LIFO", LIFOanalysis),
       ("INFLOW", deprioritizeLargeInflow),
-      ("FAIR", fairness)
+      ("FAIR", fairness),
+      ("JENS", jens)
       //("LDP", least_dependencies_first),
       //("POC", call_dependencies_only_with_Tarjan),
       //("LIVE", liveAnalysis),
@@ -787,15 +817,15 @@ object DynamicWorklistAlgorithms:
     case class Synthetic(benchmarks: Map[String, String]) extends BenchmarkSuite:
         def load(name: String): String = name
 
-    private val suites: Map[String, BenchmarkSuite] = Map(
+    lazy val suites: Map[String, BenchmarkSuite] = Map(
       "all" -> RealWorld(bench),
       "synthetic" -> Synthetic(synth),
-    )
+    ) ++ (bench.map { case (k, v) => v -> RealWorld(Map(k -> v)) })
 
     private lazy val synth: Map[String, String] =
         // Generate inflow1 programs with varying number of components
         val upflow1s = List() // (1 to 100).map(i => (ProgramGenerator.upflow(i), "upflow1%%" + (i.toString)))
-        val upflow2s = (1 to 100).map(i => (ProgramGenerator.upflow2(i), "upflow2%%" + (i.toString)))
+        val upflow2s = (6 to 6).map(i => (ProgramGenerator.upflow2(i), "upflow2%%" + (i.toString)))
         (upflow1s ++ upflow2s).toMap
 
     private lazy val bench: Map[String, String] = List(

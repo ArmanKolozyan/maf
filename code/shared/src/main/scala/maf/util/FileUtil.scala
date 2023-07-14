@@ -27,7 +27,7 @@ object Reader:
 object Writer:
 
     // Todo: W used to be a private class, but this started to give IllegalAccessErrors at some point. Try to make this private again?
-    case class W(w: BufferedWriter, var report: Boolean)
+    case class W(w: BufferedWriter, filename: String, var report: Boolean)
     opaque type Writer = W
 
     /** Avoids a file to be accidentally overwritten. */
@@ -44,10 +44,12 @@ object Writer:
             suffix += 1
         file
 
+    def getPath(w: Writer): String = w.filename
+
     def open(path: String, avoidDuplicate: Boolean = false): Writer =
         val file = new File(path)
         file.getParentFile().nn.mkdirs() // Creates the directory containing the file if it does not exists.
-        W(new BufferedWriter(new FileWriter(if avoidDuplicate then addSuffix(file) else file)), false)
+        W(new BufferedWriter(new FileWriter(if avoidDuplicate then addSuffix(file) else file)), path, false)
 
     def openTimeStamped(path: String): Writer =
         path.split("\\.").nn match
