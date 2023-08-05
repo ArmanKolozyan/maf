@@ -11,6 +11,7 @@ import maf.modular.AddrDependency
 import maf.util.Writer
 import maf.modular.scheme.PrmAddr
 import maf.util.graph.Tarjan
+import maf.modular.DependencyTrackingSnapshot
 
 /**
  * Utility to visualize the dependency graph using GraphViz.
@@ -30,13 +31,20 @@ object VisualizeTriggers:
       "LIFO" -> LIFOanalysis(theK = 0),
       "INFLOW" -> deprioritizeLargeInflow(theK = 0),
       "FAIR" -> fairness(theK = 0),
-      "JENS" -> jens(theK = 0)
     )
 
     private def lookupCount(adr: String)(count: Map[Dependency, Int]): Option[Int] =
         count.collectFirst { case (AddrDependency(foundAdr), c) if foundAdr.toString == adr => c }
 
-    private def toDot(edges: Map[String, Set[String]], count: Map[String, Int]): String =
+    /**
+     * Returns a DOT graph based on an set of edges and a weight of these edges
+     *
+     * @param edges
+     *   the set of edges
+     * @param count
+     *   the weight of these edges
+     */
+    def toDot(edges: Map[String, Set[String]], count: Map[String, Int]): String =
         val edgeString = edges
             .map { case (from, tos) =>
                 val theCount = count.get(from).getOrElse(0)
@@ -46,6 +54,22 @@ object VisualizeTriggers:
             .mkString("\n")
 
         s"digraph { $edgeString }"
+
+    /** Extract the dependency snapshot from the given analysis */
+    def snapshot(anl: Analysis): DependencyTrackingSnapshot[anl.Component] =
+        DependencyTrackingSnapshot.fromAnalysis(anl)
+
+    /** Computes the edge set and their dependency count for the given snapshot */
+    def computeNodes[Cmp](snapshot: DependencyTrackingSnapshot[Cmp]): (Map[String, Set[String]], Map[String, Int]) =
+        val reads: Map[String, Set[String]] = snapshot.reads.invert
+            .filter { case (PrmAddr(_), _) => false; case _ => true }
+            .map { case (k, v) => (k.toString, v.map(_.toString)) }
+            .toMap
+        val wrts: Map[String, Set[String]] = snapshot.writes.map { case (k, v) => (k.toString, v.map(_.toString)) }.toMap
+        val edges = reads ++ wrts
+        val weights = edges.map { case (from, _) => (from -> lookupCount(from)(snapshot.count).getOrElse(1)) }.toMap
+
+        (edges, weights)
 
     def main(arguments: Array[String]): Unit =
         if arguments.size < 2 then println("USAGE: maf ANALYSIS_1 ANALYSIS_2 benchmarks ...")
@@ -60,56 +84,49 @@ object VisualizeTriggers:
                     // load the selected benchmarks
                     val suite = suites(suiteName)
                     suite.benchmarks.foreach { case (file, name) =>
-                        println(s"Analyzing $name at $file")
-                        val programText = suite.load(file)
-                        // parse the program
-                        val program = SchemeParser.parseProgram(programText)
-                        // construct the analysis
-                        val anl1 = selected1(program)
-                        val anl2 = selected2(program)
-                        // run the analysis
-                        println(s"Running ${args(0)}")
-                        anl1.analyze()
-                        println(s"Running ${args(1)}")
-                        anl2.analyze()
-                        println("Analysis completed... Constructing graph.")
-                        def computeNodes(anl: Analysis): (Map[String, Set[String]], Map[Dependency, Int]) =
-                            val reads: Map[String, Set[String]] = anl.readDependencies.invert
-                                .filter { case (PrmAddr(_), _) => false; case _ => true }
-                                .map { case (k, v) => (k.toString, v.map(_.toString)) }
-                                .toMap
-                            val wrts: Map[String, Set[String]] = anl.writeEffects.map { case (k, v) => (k.toString, v.map(_.toString)) }.toMap
-                            (reads ++ wrts, anl.dependencyTriggerCount)
+                    // println(s"Analyzing $name at $file")
+                    // val programText = suite.load(file)
+                    // // parse the program
+                    // val program = SchemeParser.parseProgram(programText)
+                    // // construct the analysis
+                    // val anl1 = selected1(program)
+                    // val anl2 = selected2(program)
+                    // // run the analysis
+                    // println(s"Running ${args(0)}")
+                    // anl1.analyze()
+                    // println(s"Running ${args(1)}")
+                    // anl2.analyze()
+                    // println("Analysis completed... Constructing graph.")
 
-                        val (edges1, count1) = computeNodes(anl1)
-                        val (_, count2) = computeNodes(anl2)
-                        var diffMap: Map[String, Int] = Map()
+                    // val (edges1, count1) = computeNodes(snapshot(anl1))
+                    // val (_, count2) = computeNodes(snapshot(anl2))
+                    // var diffMap: Map[String, Int] = Map()
 
-                        // The edges should be the same so we ignore the second one
-                        // then we compute the difference between the trigger count in the first and the second
-                        // and only keep the edges that have differences that are different from zero
-                        val edges1p = edges1.flatMap { case (from, tos) =>
-                            val diff = for
-                                c1 <- lookupCount(from)(count1)
-                                c2 <- lookupCount(from)(count2)
-                            yield c1 - c2
-                            if diff.isDefined && diff.get != 0 then
-                                diffMap = diffMap + (from -> diff.get)
-                                List(from -> tos)
-                            else if diff.isEmpty then List(from -> tos)
-                            else List()
-                        }
+                    // // The edges should be the same so we ignore the second one
+                    // // then we compute the difference between the trigger count in the first and the second
+                    // // and only keep the edges that have differences that are different from zero
+                    // val edges1p = edges1.flatMap { case (from, tos) =>
+                    //     val diff = for
+                    //         c1 <- lookupCount(from)(count1)
+                    //         c2 <- lookupCount(from)(count2)
+                    //     yield c1 - c2
+                    //     if diff.isDefined && diff.get != 0 then
+                    //         diffMap = diffMap + (from -> diff.get)
+                    //         List(from -> tos)
+                    //     else if diff.isEmpty then List(from -> tos)
+                    //     else List()
+                    // }
 
-                        val contents = toDot(edges1p, diffMap)
-                        val w = Writer.openTimeStamped(s"output/output_${name}.dot")
-                        Writer.write(w, contents)
-                        Writer.close(w)
+                    // val contents = toDot(edges1p, diffMap)
+                    // val w = Writer.openTimeStamped(s"output/output_${name}.dot")
+                    // Writer.write(w, contents)
+                    // Writer.close(w)
 
-                        val (sccs, _) = Tarjan.collapse(edges1.keySet, edges1)
-                        println(s"SCCs in graph: ${sccs.size}")
+                    // val (sccs, _) = Tarjan.collapse(edges1.keySet, edges1)
+                    // println(s"SCCs in graph: ${sccs.size}")
 
-                        import sys.process.*
-                        s"sfdp -x -Goverlap=scale -Tpdf \"${Writer.getPath(w)}\" -o /tmp/out.pdf".!
-                        "open /tmp/out.pdf".!
+                    // import sys.process.*
+                    // s"sfdp -x -Goverlap=scale -Tpdf \"${Writer.getPath(w)}\" -o /tmp/out.pdf".!
+                    // "open /tmp/out.pdf".!
                     }
                 )

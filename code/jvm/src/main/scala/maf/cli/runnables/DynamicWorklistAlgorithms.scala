@@ -38,7 +38,7 @@ import maf.util.datastructures.ListOps.*
 import maf.util.benchmarks.Table
 import maf.util.Writer
 import maf.cli.experiments.worklist.ProgramGenerator
-import maf.modular.AddrDependency
+import maf.modular.*
 import maf.util.MapUtil.invert
 
 object DynamicWorklistAlgorithms:
@@ -578,7 +578,7 @@ object DynamicWorklistAlgorithms:
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
+            with DependencyTrackingSnapshotAnalysis[SchemeExp]
             with PriorityQueueWorklistAlgorithm[SchemeExp] {
             val k = theK
 
@@ -586,7 +586,7 @@ object DynamicWorklistAlgorithms:
             private var priorities: Map[Component, Int] = Map().withDefaultValue(0)
 
             override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra:
+                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingSnapshotIntra:
                     override def commit(): Unit =
                         super.commit()
                         priorities = readDependencies.invert.foldLeft(Map[Component, Int]().withDefaultValue(0)) { case (result, (adr, cmps)) =>
@@ -597,35 +597,6 @@ object DynamicWorklistAlgorithms:
                         }
         }
 
-    def jens(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with PriorityQueueWorklistAlgorithm[SchemeExp] {
-            val k = theK
-
-            lazy val ordering: Ordering[Component] = Ordering.by(cmp => priorities(cmp))(Ordering.Int)
-            private var priorities: Map[Component, Int] = Map().withDefaultValue(0)
-            private var a: Map[Component, Int] = Map().withDefaultValue(0)
-            private var i: Map[Component, Int] = Map().withDefaultValue(0)
-            private var x: Int = 0
-
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra:
-                    override def commit(): Unit =
-                        super.commit()
-                        a = a.updatedWith(cmp)(v => Some(v.getOrElse(0) - 1))
-                        x = visited.size
-                        i = readDependencies.invert.foldLeft(Map[Component, Int]().withDefaultValue(0)) { case (result, (adr, cmps)) =>
-                            cmps.foldLeft(result)((result, cmp) =>
-                                val count = dependencyTriggerCount.get(AddrDependency(adr)).getOrElse(0)
-                                result.updatedWith(cmp)(v => Some(v.map(_ - count).getOrElse(-count)))
-                            )
-                        }
-                        priorities = priorities.updated(cmp, -i(cmp) + (a(cmp) * (x)) / 2)
-
-        }
     def fairness(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
@@ -747,7 +718,6 @@ object DynamicWorklistAlgorithms:
       ("LIFO", LIFOanalysis),
       ("INFLOW", deprioritizeLargeInflow),
       ("FAIR", fairness),
-      ("JENS", jens)
       //("LDP", least_dependencies_first),
       //("POC", call_dependencies_only_with_Tarjan),
       //("LIVE", liveAnalysis),
