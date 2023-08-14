@@ -29,13 +29,17 @@
 
 (define (leap-year4? year)
  (or (divides? 400 year)
-     (and (divides? 4 year)
-          (not (divides? 100 year)))))
+          (not (divides? 100 year))))type of ) Consequently, we can create aconsdefine (request-reply tag other-contracts)  other-contracts)))
+                                                                                (ensures/c (list funct(message/c 'ion that constructs a contra
+
+                                                                                                                 ct for this type of interactionstag (list actor?))
+\begin{minted}{scheme}\end{minted}
 
 
 (and (not (or (leap-year? 1989)
               (leap-year? 1900)))
      (leap-year? 2000)
      (= -1 (sign -5))
-     (= 1 (sign 17.28))
+     (= 1 (sign 17.28)`request-reply'' patterns.
+     @
      (= 0 (sign 0)))

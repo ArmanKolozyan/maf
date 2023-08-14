@@ -40,6 +40,8 @@ import maf.util.Writer
 import maf.cli.experiments.worklist.ProgramGenerator
 import maf.modular.*
 import maf.util.MapUtil.invert
+import maf.util.graph.FloydWarshall
+import java.io.ByteArrayInputStream
 
 object DynamicWorklistAlgorithms:
 
@@ -597,6 +599,99 @@ object DynamicWorklistAlgorithms:
                         }
         }
 
+    /**
+     * Experiment where components are prioritized where a large flow of values is orginating from, we do this by calculating the most expensive path
+     * (in term of value flow) from each node to the nodes in the target node in the worklist. To this end, the flow edges are **reversed** such that
+     * if there exists a flow from a -> b, the edge will be b -> a.
+     */
+    def gravitateInflow(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTrackingSnapshotAnalysis[SchemeExp]
+            with PriorityQueueWorklistAlgorithm[SchemeExp] {
+            val k = theK
+
+            // TODO: this is the same as the deprioritizeInflow, this should change
+            lazy val ordering: Ordering[Component] = Ordering.by((cmp: Component) => priorities.getOrElse(cmp, 0.0))(Ordering.Double.TotalOrdering)
+
+            /** A map of edge weights corresponding to the number of triggers for that particular edge (inverted) */
+            private var priorities: Map[Any, Double] = Map().withDefaultValue(0)
+
+            /** A map that keeps track of the weights for an edge over time */
+            private var weights: Map[(Node, Node), Double] = Map()
+
+            /** A map that keeps track of all the write edges */
+            private var Ws: Map[Node, Set[Node]] = Map()
+
+            enum Node:
+                case AdrNode(adr: Address)
+                case CmpNode(cmp: Component)
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingSnapshotIntra:
+                    override def commit(): Unit =
+                        super.commit()
+                        import FloydWarshall.*
+
+                        given cats.Monoid[Double] with
+                            def empty: Double = 0.0
+                            def combine(x: Double, y: Double): Double = x + y
+
+                        given Ordering[Double] = Ordering.Double.TotalOrdering
+
+                        // TODO: actually we will need the write and read dependencies to have a complete graph
+                        // the read dependencies don't have to be inverted, but the write dependencies need
+                        // to be inverted.
+
+                        // the read dependencies make a flow from a component to an address possible
+                        val Rs: Map[Node, Set[Node]] = readDependencies.map { case (k, v) => (Node.CmpNode(k) -> v.map(Node.AdrNode.apply)) }
+                        // the write dependencies make a flow from an address to a component possible,
+                        // however this is not how they are stored, so they have to be inverted
+                        Ws = writeEffects.invert.foldLeft(Ws) { case (ws2, (from, tos)) =>
+                            ws2 + (Node.AdrNode(from) -> tos.map(Node.CmpNode.apply))
+                        }
+                        // the weights of the write edges correspond to the number of times they have been triggered,
+                        // but with a reversed sign. This is to ensure that the shortest path chooses the edges
+                        // with the smallest weight (thus the biggest flow) for its calculations.
+                        weights = Ws.foldLeft(weights) { case (result, (from @ Node.AdrNode(adr), tos)) =>
+                            tos.foldLeft(result)((result, to) =>
+                                val count: Double = dependencyTriggerCount.get(AddrDependency(adr)).map(_.toDouble).getOrElse(0.0)
+                                result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
+                            )
+                        }
+                        // set the read edges to 0
+                        weights = forallEdges(Rs).foldLeft(weights) { case (result, (from, to)) =>
+                            result.updated((from, to), 0)
+                        }
+
+                        val edges: Map[Node, Set[Node]] = (Rs.toSeq ++ Ws.toSeq).groupBy(_._1).view.mapValues(d => d.flatMap(_._2).toSet).toMap
+
+                        // the nodes are all nodes that participate in the Rs and Ws edge sets
+                        val nodes = (forallEdges(Rs) ++ forallEdges(Ws)).flatMap { case (n1, n2) => List(n1, n2) }.toSet
+
+                        // compute the "heaviest" component, that is, accumulate all paths
+                        // that end with this node, and sum their maximal weight together,
+                        // then we compute priority over that
+                        val floydwarshallWeights = FloydWarshall.floydwarshall(nodes, edges, weights, Double.PositiveInfinity)
+                        priorities = nodes
+                            .map(destination =>
+                                destination -> nodes
+                                    .flatMap(source => floydwarshallWeights.get((source, destination)).map(Math.abs))
+                                    .foldLeft(0.0)(_ + _)
+                            )
+                            .toMap
+
+                        val edgesDot: Map[String, Set[String]] = edges.map { case (k, v) =>
+                            (k.toString, v.map(_.toString()))
+                        }
+                        val dot = VisualizeTriggers.toDot(edgesDot, weights.map { case ((from, to), v) => (from.toString(), v.toInt) }.toMap)
+
+                        import scala.sys.process.*
+                        ((s"sfdp -x -Goverlap=scale -Tpdf -o /tmp/frame-final.pdf") #< ByteArrayInputStream(dot.getBytes())).!!
+
+        }
+
     def fairness(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
@@ -718,6 +813,7 @@ object DynamicWorklistAlgorithms:
       ("LIFO", LIFOanalysis),
       ("INFLOW", deprioritizeLargeInflow),
       ("FAIR", fairness),
+      ("INFLOW'", gravitateInflow)
       //("LDP", least_dependencies_first),
       //("POC", call_dependencies_only_with_Tarjan),
       //("LIVE", liveAnalysis),

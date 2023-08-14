@@ -31,7 +31,7 @@ object FloydWarshall:
       ): Map[(Node, Node), Weight] =
         val dist: mutable.Map[(Node, Node), Weight] = mutable.Map().withDefaultValue(max)
         // initialize direct edges
-        forallEdges(edges).foreach { case edge @ (from, to) => dist((from, to)) = weights(edge) }
+        forallEdges(edges).foreach { case edge @ (from, to) => dist((from, to)) = weights.getOrElse(edge, max) }
         // Initialize self-distances to zero
         nodes.foreach(node => dist((node, node)) = Monoid[Weight].empty)
         // the loops

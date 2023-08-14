@@ -55,7 +55,11 @@ object AnalyzeWorklistAlgorithms extends App:
       ): Option[(AnalysisStats, Double)] =
         for
             time <- Try(Timer.timeOnly {
-                analysis.analyzeWithTimeout(Timeout.start(5.minutes))
+                try analysis.analyzeWithTimeout(Timeout.start(5.minutes))
+                catch
+                    case e: Exception =>
+                        e.printStackTrace()
+                        throw e
                 if !analysis.finished then throw TimeoutException()
             }).toOption
             // compute the "size" for each variable address in the program
