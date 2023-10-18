@@ -32,3 +32,9 @@ out/
 *.zo
 __pycache__
 stats/
+*.checked
+*.pom
+*.pom__sha1
+*.jar__md5
+*.jar__sha1
+*.pom__md5

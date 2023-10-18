@@ -10,14 +10,14 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
     /** Calls */
     var dependencies: mutable.Map[Component, mutable.Set[Component]] = mutable.Map().withDefaultValue(mutable.Set.empty)
 
-    /** Read depdencies */
+    /** Read dependencies */
     var readDependencies: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
 
     /** The writes performed by a component */
     var writeEffects: Map[Component, Set[Address]] = Map().withDefaultValue(Set.empty)
 
     /**
-     * A mutable graph that represents the current dependency graph but where transitive depdency through an address is already computed, thereby
+     * A mutable graph that represents the current dependency graph but where transitive dependency through an address is already computed, thereby
      * mapping components to sets of components
      */
     var graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()

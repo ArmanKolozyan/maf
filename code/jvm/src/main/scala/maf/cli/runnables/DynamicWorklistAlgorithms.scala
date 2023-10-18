@@ -1,11 +1,6 @@
 package maf.cli.runnables
 
 import maf.cli.runnables.AnalyzeWorklistAlgorithms.{numIterations, timeAnalysis, warmup, FIFOanalysis, LIFOanalysis}
-import maf.cli.runnables.DynamicWorklistAlgorithms.{
-    LeastDependenciesFirstWorklistAlgorithmPOC,
-    LiveLeastDependenciesFirstWorklistAlgorithm,
-    LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2
-}
 import maf.core.{Address, Expression}
 import maf.language.scheme.{SchemeExp, SchemeParser}
 import maf.modular.scheme.SchemeConstantPropagationDomain
@@ -45,16 +40,19 @@ import java.io.ByteArrayInputStream
 
 object DynamicWorklistAlgorithms:
 
-    trait LeastDependenciesFirstWorklistAlgorithmPOC[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
+    enum Priority: // prioritizing Least or Most Dependencies
+        case Most, Least, Callee, Caller
+    trait TopSort_AllDeps_POC[Expr <: Expression](priority: Priority) extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
         var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
         lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
         private var callDependencies: mutable.Map[Component, mutable.Set[Component]] = mutable.Map().withDefaultValue(mutable.Set.empty)
 
+        // must first be called to provide the heuristic its perfect knowledge
         def updateDependencies(
             deps: mutable.Map[Component, mutable.Set[Component]],
             readDeps: Map[Component, Set[Address]],
-            writeDeps: Map[Component, Set[Address]]
-          ): Int =
+            writeDeps: Map[Component, Set[Address]],
+          ): Unit =
 
             // adding read and write dependencies to the graph that is in DependencyTracking
             for {
@@ -64,9 +62,6 @@ object DynamicWorklistAlgorithms:
             } {
                 addEdge(writer, reader)
             }
-
-            // a graph to test how Tarjan.collapse works
-            val test_graph = Map("a" -> Set("b"), "b" -> Set("c"), "c" -> Set("d"), "d" -> Set("a"))
 
             // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
             // Care must be taken in case the graph consists of only 1 strongly connected component,
@@ -80,49 +75,73 @@ object DynamicWorklistAlgorithms:
                 callDependencies = deps
                 deps.keySet.foreach(comp => {
                     val currDep = deps.getOrElse(comp, Set.empty)
-                    depCount += (comp -> -currDep.size)
+                    depCount += (comp -> {
+                        if priority == Priority.Least then
+                            -currDep.size
+                        else currDep.size
+                    })
                 })
-                return sccs.toList.length
+                sccs.toList.length
             else {
 
-                /// Now we are going to construct a new graph that has as
-                /// nodes the strongly connected components of the original graph
-
-                // a map from the new graph nodes to the original graph nodes
-                val newToOrigNodes: Map[String, Set[Component]] = sccs.zipWithIndex.map { case (nodes, idx) =>
-                    val newNode = s"node$idx"
-                    newNode -> nodes
-                }.toMap
-
-                // constructing the new graph
-                val newGraph: Map[String, Set[String]] = sccEdges.map { case (from, tos) =>
-                    val fromNode = newToOrigNodes.find(_._2 == from).map(_._1).get
-                    val toNodes = tos.flatMap(t => newToOrigNodes.find(_._2 == t).map(_._1))
-                    fromNode -> toNodes
-                }
-
                 // applying topological sorting
-                val sortedNodes = TopSort.topsort(newGraph.keys.toList, newGraph)
+                val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
 
-                // updating the ordering of the priority queue based on the topological order
+                // updating the ordering of the priority queue based on the
+                // number of dependencies
                 sortedNodes.zipWithIndex.foreach { case (node, index) =>
-                    newToOrigNodes
-                        .get(node)
-                        .get
-                        .foreach(
-                          // remarks:
-                          // 1. all of the nodes of the same SCC get the same priority
-                          // 2. first node of the topological sorting gets the highest priority (because has least dependencies)
-                          comp =>
-                              depCount += (comp -> {
-                                  sortedNodes.length - index
-                              })
-                        )
+                    sortedNodes.foreach(
+                        // remarks:
+                        // 1. all of the nodes of the same SCC get the same priority
+                        // 2. last node of the topological sorting gets the highest priority (because has least call dependencies)
+                        comps =>
+                            comps.foreach(comp =>
+                                depCount += (comp -> {
+                                    if priority == Priority.Least then
+                                        sortedNodes.length - index
+                                    else index
+                                })
+                            )
+                    )
                 }
-                return sccs.toList.length
             }
 
-    trait LiveLeastDependenciesFirstWorklistAlgorithm[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
+    trait TopSort_CallDeps_POC[Expr <: Expression](priority: Priority)
+        extends PriorityQueueWorklistAlgorithm[Expr]
+            with DependencyTracking[Expr] :
+        var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
+        lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
+
+        def updateDependencies(
+                                  deps: mutable.Map[Component, mutable.Set[Component]],
+                                  readDeps: Map[Component, Set[Address]],
+                                  writeDeps: Map[Component, Set[Address]]
+                              ): Unit =
+            graph = deps
+
+            depCount = Map.empty.withDefaultValue(0)
+            // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
+            // Care must be taken in case the graph consists of only 1 strongly connected component,
+            // because in that case you actually get back a graph with only 1 node.
+            val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
+
+            // applying topological sorting
+            val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
+
+            // updating the ordering of the priority queue based on the
+            // number of dependencies
+            sortedNodes.zipWithIndex.foreach { case (comps, index) =>
+                comps.foreach(comp =>
+                    depCount += (comp -> {
+                        if priority == Priority.Callee then
+                            index
+                        else sortedNodes.length - index
+                    })
+                )
+            }
+
+
+    trait TopSort_AllDeps_Live[Expr <: Expression](priority: Priority) extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
         var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
         lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
 
@@ -131,6 +150,7 @@ object DynamicWorklistAlgorithms:
             override def commit(): Unit =
                 super.commit()
                 depCount = Map.empty.withDefaultValue(0)
+
                 // adding read and write dependencies to the graph that is in DependencyTracking
                 for {
                     (reader, addresses) <- readDependencies
@@ -139,9 +159,6 @@ object DynamicWorklistAlgorithms:
                 } {
                     addEdge(writer, reader)
                 }
-
-                // a graph to test how Tarjan.collapse works
-                val test_graph = Map("a" -> Set("b"), "b" -> Set("c"), "c" -> Set("d"), "d" -> Set("a"))
 
                 // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
                 // Care must be taken in case the graph consists of only 1 strongly connected component,
@@ -152,90 +169,13 @@ object DynamicWorklistAlgorithms:
                     // code to only work with call dependencies
                     dependencies.keySet.foreach(comp => {
                         val currDep = dependencies.getOrElse(comp, Set.empty)
-                        depCount += (comp -> -currDep.size)
+                        depCount += (comp -> {
+                            if priority == Priority.Least then
+                                -currDep.size
+                            else currDep.size
+                        })
                     })
                 else {
-
-                    /// Now we are going to construct a new graph that has as
-                    /// nodes the strongly connected components of the original graph
-
-                    // a map from the new graph nodes to the original graph nodes
-                    val newToOrigNodes: Map[String, Set[Component]] = sccs.zipWithIndex.map { case (nodes, idx) =>
-                        val newNode = s"node$idx"
-                        newNode -> nodes
-                    }.toMap
-
-                    // constructing the new graph
-                    val newGraph: Map[String, Set[String]] = sccEdges.map { case (from, tos) =>
-                        val fromNode = newToOrigNodes.find(_._2 == from).map(_._1).get
-                        val toNodes = tos.flatMap(t => newToOrigNodes.find(_._2 == t).map(_._1))
-                        fromNode -> toNodes
-                    }
-
-                    // applying topological sorting
-                    val sortedNodes = TopSort.topsort(newGraph.keys.toList, newGraph)
-
-                    // updating the ordering of the priority queue based on the
-                    // number of dependencies
-                    sortedNodes.zipWithIndex.foreach { case (node, index) =>
-                        newToOrigNodes
-                            .get(node)
-                            .get
-                            .foreach(
-                              // remarks:
-                              // 1. all of the nodes of the same SCC get the same priority
-                              // 2. first node of the topological sorting gets the highest priority (because has least dependencies)
-                              comp =>
-                                  depCount += (comp -> {
-                                      sortedNodes.length - index
-                                  })
-                            )
-                    }
-                }
-
-    def mySum[T](list: List[T])(implicit num: Numeric[T]): T = {
-        list.foldLeft(num.zero)(num.plus)
-    }
-
-    trait LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check[Expr <: Expression]
-        extends PriorityQueueWorklistAlgorithm[Expr]
-        with DependencyTracking[Expr]:
-        var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-        lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-        var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
-
-        override def intraAnalysis(component: Component): LiveDependencyTrackingIntra
-
-        trait LiveDependencyTrackingIntra extends DependencyTrackingIntra:
-
-            override def commit(): Unit =
-                super.commit()
-                depCount = Map.empty.withDefaultValue(0)
-
-                graph = dependencies
-
-                if old_graph != graph then {
-                    old_graph = graph.clone()
-                    // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
-                    // Care must be taken in case the graph consists of only 1 strongly connected component,
-                    // because in that case you actually get back a graph with only 1 node.
-                    val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
-
-                    /// Now we are going to construct a new graph that has as
-                    /// nodes the strongly connected components of the original graph
-
-                    // a map from the new graph nodes to the original graph nodes
-                    val newToOrigNodes: Map[Int, Set[Component]] = sccs.zipWithIndex.map { case (nodes, idx) =>
-                        val newNode = idx
-                        newNode -> nodes
-                    }.toMap
-
-                    // constructing the new graph
-                    val newGraph: Map[Int, Set[Int]] = sccEdges.map { case (from, tos) =>
-                        val fromNode = newToOrigNodes.find(_._2 == from).map(_._1).get
-                        val toNodes = tos.flatMap(t => newToOrigNodes.find(_._2 == t).map(_._1))
-                        fromNode -> toNodes
-                    }
 
                     // applying topological sorting
                     val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
@@ -244,119 +184,34 @@ object DynamicWorklistAlgorithms:
                     // number of dependencies
                     sortedNodes.zipWithIndex.foreach { case (node, index) =>
                         sortedNodes.foreach(
-                          // remarks:
-                          // 1. all of the nodes of the same SCC get the same priority
-                          // 2. first node of the topological sorting gets the highest priority (because has least dependencies)
-                          comps =>
-                              comps.foreach(comp =>
-                                  depCount += (comp -> {
-                                      index
-                                  })
-                              )
+                            // remarks:
+                            // 1. all of the nodes of the same SCC get the same priority
+                            // 2. last node of the topological sorting gets the highest priority (because has least call dependencies)
+                            comps =>
+                                comps.foreach(comp =>
+                                    depCount += (comp -> {
+                                        if priority == Priority.Least then
+                                            sortedNodes.length - index
+                                        else index
+                                    })
+                                )
                         )
                     }
-                } else {}
 
-    trait LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2[Expr <: Expression]
+                    // updating the ordering of the priority queue based on the
+                    // number of dependencies
+                }
+
+
+    trait TopSort_CallDeps_Live_Without_Check[Expr <: Expression]
         extends PriorityQueueWorklistAlgorithm[Expr]
-        with DependencyTracking[Expr]:
+            with DependencyTracking[Expr] :
         var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
         lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-        var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
 
         override def intraAnalysis(component: Component): LiveDependencyTrackingIntra
 
-        trait LiveDependencyTrackingIntra extends DependencyTrackingIntra:
-
-            override def commit(): Unit =
-                super.commit()
-
-                graph = dependencies
-
-                if old_graph != graph then {
-                    depCount = Map.empty.withDefaultValue(0)
-                    old_graph = graph.clone()
-                    // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
-                    // Care must be taken in case the graph consists of only 1 strongly connected component,
-                    // because in that case you actually get back a graph with only 1 node.
-                    val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
-
-                    // applying topological sorting
-                    val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
-
-                    // println(s"sortedNodes: ${sortedNodes}")
-                    //     println(sortedNodes)
-
-                    // updating the ordering of the priority queue based on the
-                    // number of dependencies
-                    sortedNodes.zipWithIndex.foreach { case (comps, index) =>
-                        comps.foreach(comp =>
-                            depCount += (comp -> {
-                                index
-                            })
-                        )
-                    }
-                    //          println(s"depcount: ${depCount}")
-
-                    //          println(depCount)
-                }
-
-    trait LiveLeastDependenciesFirstWorklistAlgorithm_CallersOnly_With_Check[Expr <: Expression]
-        extends PriorityQueueWorklistAlgorithm[Expr]
-        with DependencyTracking[Expr]:
-        var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-        lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-        var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
-
-        override def intraAnalysis(component: Component): LiveDependencyTrackingIntraa
-
-        trait LiveDependencyTrackingIntraa extends DependencyTrackingIntra:
-
-            override def commit(): Unit =
-                super.commit()
-
-                graph = dependencies
-
-                if old_graph != graph then {
-                    depCount = Map.empty.withDefaultValue(0)
-                    old_graph = graph.clone()
-                    // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
-                    // Care must be taken in case the graph consists of only 1 strongly connected component,
-                    // because in that case you actually get back a graph with only 1 node.
-                    val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
-
-                    // applying topological sorting
-                    val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
-
-                    // println(s"sortedNodes: ${sortedNodes}")
-                    //     println(sortedNodes)
-
-                    // updating the ordering of the priority queue based on the
-                    // number of dependencies
-                    sortedNodes.zipWithIndex.foreach { case (comps, index) =>
-                        comps.foreach(comp =>
-                            depCount += (comp -> {
-                                sortedNodes.length - index
-                            })
-                        )
-                    }
-                    //          println(s"depcount: ${depCount}")
-
-                    //          println(depCount)
-                }
-
-    trait Main_Last_Heuristic[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr]:
-        var depth: Map[Component, Int] = Map.empty.withDefaultValue(0) + (initialComponent -> -100)
-        lazy val ordering: Ordering[Component] = Ordering.by(depth)(Ordering.Int)
-    trait LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_Without_Check[Expr <: Expression]
-        extends PriorityQueueWorklistAlgorithm[Expr]
-        with DependencyTracking[Expr]:
-        var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-        lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-
-        override def intraAnalysis(component: Component): LiveDependencyTrackingIntraaa
-
-        trait LiveDependencyTrackingIntraaa extends DependencyTrackingIntra:
+        trait LiveDependencyTrackingIntra extends DependencyTrackingIntra :
 
             override def commit(): Unit =
                 super.commit()
@@ -383,141 +238,53 @@ object DynamicWorklistAlgorithms:
                     )
                 }
 
-    trait WeirdestHeuristic[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
-        var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-        lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-
-    trait MostDependenciesFirstWorklistAlgorithmPOC[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
-        var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-        lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-        private var callDependencies: mutable.Map[Component, mutable.Set[Component]] = mutable.Map().withDefaultValue(mutable.Set.empty)
-
-        def updateDependencies(
-            deps: mutable.Map[Component, mutable.Set[Component]],
-            readDeps: Map[Component, Set[Address]],
-            writeDeps: Map[Component, Set[Address]]
-          ): Int =
-
-            // adding read and write dependencies to the graph that is in DependencyTracking
-            for {
-                (reader, addresses) <- readDeps
-                address <- addresses
-                writer <- writeDeps.keys if writeDeps(writer)(address)
-            } {
-                addEdge(writer, reader)
-            }
-
-            // a graph to test how Tarjan.collapse works
-            val test_graph = Map("a" -> Set("b"), "b" -> Set("c"), "c" -> Set("d"), "d" -> Set("a"))
-
-            // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
-            // Care must be taken in case the graph consists of only 1 strongly connected component,
-            // because in that case you actually get back a graph with only 1 node.
-            val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
-
-            if sccs.toList.length == 1 then
-                // code to only work with call dependencies
-                callDependencies = deps
-                deps.keySet.foreach(comp => {
-                    val currDep = deps.getOrElse(comp, Set.empty)
-                    depCount += (comp -> currDep.size)
-                })
-                return sccs.toList.length
-            else {
-
-                /// Now we are going to construct a new graph that has as
-                /// nodes the strongly connected components of the original graph
-
-                // a map from the new graph nodes to the original graph nodes
-                val newToOrigNodes: Map[String, Set[Component]] = sccs.zipWithIndex.map { case (nodes, idx) =>
-                    val newNode = s"node$idx"
-                    newNode -> nodes
-                }.toMap
-
-                // constructing the new graph
-                val newGraph: Map[String, Set[String]] = sccEdges.map { case (from, tos) =>
-                    val fromNode = newToOrigNodes.find(_._2 == from).map(_._1).get
-                    val toNodes = tos.flatMap(t => newToOrigNodes.find(_._2 == t).map(_._1))
-                    fromNode -> toNodes
-                }
-
-                // applying topological sorting
-                val sortedNodes = TopSort.topsort(newGraph.keys.toList, newGraph)
-
-                // updating the ordering of the priority queue based on the
-                // number of dependencies
-                sortedNodes.zipWithIndex.foreach { case (node, index) =>
-                    newToOrigNodes
-                        .get(node)
-                        .get
-                        .foreach(
-                          // remarks:
-                          // 1. all of the nodes of the same SCC get the same priority
-                          // 2. first node of the topological sorting gets the highest priority (because has least dependencies)
-                          comp =>
-                              depCount += (comp -> {
-                                  index
-                              })
-                        )
-                }
-                return sccs.toList.length
-            }
-
-    trait OnlyDependenciesFirstWorklistAlgorithmPOC[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr] with DependencyTracking[Expr]:
-        var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
-        lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
-        private var callDependencies: mutable.Map[Component, mutable.Set[Component]] = mutable.Map().withDefaultValue(mutable.Set.empty)
-
-        def updateDependencies(
-            deps: mutable.Map[Component, mutable.Set[Component]],
-            readDeps: Map[Component, Set[Address]],
-            writeDeps: Map[Component, Set[Address]]
-          ): Unit =
-
-            // code to only work with call dependencies
-            callDependencies = deps
-            deps.keySet.foreach(comp => {
-                val currDep = deps.getOrElse(comp, Set.empty)
-                depCount += (comp -> -currDep.size)
-            })
-
-    trait OnlyDependenciesFirstWorklistAlgorithmPOC_Tarjan[Expr <: Expression]
+    trait TopSort_CallDeps_Live_With_Check[Expr <: Expression](priority: Priority)
         extends PriorityQueueWorklistAlgorithm[Expr]
         with DependencyTracking[Expr]:
         var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
         lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
+        var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
 
-        def updateDependencies(
-            deps: mutable.Map[Component, mutable.Set[Component]],
-            readDeps: Map[Component, Set[Address]],
-            writeDeps: Map[Component, Set[Address]]
-          ): Int =
-            graph = deps
+        override def intraAnalysis(component: Component): LiveDependencyTrackingIntra
 
-            depCount = Map.empty.withDefaultValue(0)
-            // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
-            // Care must be taken in case the graph consists of only 1 strongly connected component,
-            // because in that case you actually get back a graph with only 1 node.
-            val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
+        trait LiveDependencyTrackingIntra extends DependencyTrackingIntra:
 
-            // applying topological sorting
-            val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
+            override def commit(): Unit =
+                super.commit()
 
-            println(s"LENGTH: ${sccs.toList.length}")
+                graph = dependencies
 
-            // println(s"sortedNodes: ${sortedNodes}")
-            //     println(sortedNodes)
+                if old_graph != graph then {
+                    depCount = Map.empty.withDefaultValue(0)
+                    old_graph = graph.clone()
+                    // applying Tarjan.collapse to (ideally) get a DAG (Directed Acyclic Graph)
+                    // Care must be taken in case the graph consists of only 1 strongly connected component,
+                    // because in that case you actually get back a graph with only 1 node.
+                    val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
 
-            // updating the ordering of the priority queue based on the
-            // number of dependencies
-            sortedNodes.zipWithIndex.foreach { case (comps, index) =>
-                comps.foreach(comp =>
-                    depCount += (comp -> {
-                        index
-                    })
-                )
-            }
-            return sccs.toList.length
+                    // applying topological sorting
+                    val sortedNodes = TopSort.topsort(sccs.toList, sccEdges)
+
+                    // println(s"sortedNodes: ${sortedNodes}")
+                    //     println(sortedNodes)
+
+                    // updating the ordering of the priority queue based on the
+                    // number of dependencies
+                    sortedNodes.zipWithIndex.foreach { case (comps, index) =>
+                        comps.foreach(comp =>
+                            depCount += (comp -> {
+                                if priority == Priority.Callee then
+                                    index
+                                else sortedNodes.length - index
+                            })
+                        )
+                    }
+                }
+
+
+    trait Main_Last_Heuristic[Expr <: Expression] extends PriorityQueueWorklistAlgorithm[Expr]:
+        var depth: Map[Component, Int] = Map.empty.withDefaultValue(0) + (initialComponent -> -100)
+        lazy val ordering: Ordering[Component] = Ordering.by(depth)(Ordering.Int)
 
     type Deps = mutable.Map[SchemeModFComponent, mutable.Set[SchemeModFComponent]]
     type GraphDeps = Map[SchemeModFComponent, Set[Address]]
@@ -543,38 +310,92 @@ object DynamicWorklistAlgorithms:
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def least_dependencies_first(theK: Int)(program: SchemeExp) =
+    // PROOF OF CONCEPT HEURISTICS
+    def least_dependencies_first_POC(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
-            with LeastDependenciesFirstWorklistAlgorithmPOC[SchemeExp] {
+            with TopSort_AllDeps_POC[SchemeExp](Priority.Least) {
             val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def most_dependencies_first(theK: Int)(program: SchemeExp) =
+    def most_dependencies_first_POC(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
-            with MostDependenciesFirstWorklistAlgorithmPOC[SchemeExp] {
+            with TopSort_AllDeps_POC[SchemeExp](Priority.Most) {
             val k = theK
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def call_dependencies_only(theK: Int)(program: SchemeExp) =
+    def call_dependencies_only_POC(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
             with DependencyTracking[SchemeExp]
-            with OnlyDependenciesFirstWorklistAlgorithmPOC[SchemeExp] {
+            with TopSort_CallDeps_POC[SchemeExp](Priority.Callee) {
             val k = theK
+
             override def intraAnalysis(cmp: SchemeModFComponent) =
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
+
+    // LIVE HEURISTICS
+
+    def least_dependencies_first_Live(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTracking[SchemeExp]
+            with TopSort_AllDeps_Live[SchemeExp](Priority.Least) {
+            val k = theK
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
+        }
+
+    def most_dependencies_first_Live(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTracking[SchemeExp]
+            with TopSort_AllDeps_Live[SchemeExp](Priority.Most) {
+            val k = theK
+
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
+        }
+
+    def call_dependencies_only_Live_Without_Check(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTracking[SchemeExp]
+            with TopSort_CallDeps_Live_Without_Check[SchemeExp] {
+            val k = theK
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
+        }
+
+    def call_dependencies_only_Live_With_Check(theK: Int)(program: SchemeExp) =
+        new SimpleSchemeModFAnalysis(program)
+            with SchemeModFKCallSiteSensitivity
+            with SchemeConstantPropagationDomain
+            with DependencyTracking[SchemeExp]
+            with TopSort_CallDeps_Live_With_Check[SchemeExp](Priority.Callee) {
+            val k = theK
+
+            override def intraAnalysis(cmp: SchemeModFComponent) =
+                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
+        }
+
 
     def deprioritizeLargeInflow(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
@@ -621,7 +442,7 @@ object DynamicWorklistAlgorithms:
             /** A map that keeps track of the weights for an edge over time */
             private var weights: Map[(Node, Node), Double] = Map()
 
-            /** A map that keeps track of all the write edges */
+            /** A map that keeps track of all the write edges (= inverted writeEffects) */
             private var Ws: Map[Node, Set[Node]] = Map()
 
             enum Node:
@@ -655,9 +476,10 @@ object DynamicWorklistAlgorithms:
                         // but with a reversed sign. This is to ensure that the shortest path chooses the edges
                         // with the smallest weight (thus the biggest flow) for its calculations.
                         weights = Ws.foldLeft(weights) { case (result, (from @ Node.AdrNode(adr), tos)) =>
-                            tos.foldLeft(result)((result, to) =>
+                            tos.foldLeft(result)((result, to) => // all the components that write to this address
                                 val count: Double = dependencyTriggerCount.get(AddrDependency(adr)).map(_.toDouble).getOrElse(0.0)
                                 result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
+                              // ^ updating weight of the edge adr -> comp (where comp writes to adr)
                             )
                         }
                         // set the read edges to 0
@@ -668,6 +490,7 @@ object DynamicWorklistAlgorithms:
                         val edges: Map[Node, Set[Node]] = (Rs.toSeq ++ Ws.toSeq).groupBy(_._1).view.mapValues(d => d.flatMap(_._2).toSet).toMap
 
                         // the nodes are all nodes that participate in the Rs and Ws edge sets
+                        // forallEdges transforms (from, tos) to ((from,to_1), (from,to_2), ...)
                         val nodes = (forallEdges(Rs) ++ forallEdges(Ws)).flatMap { case (n1, n2) => List(n1, n2) }.toSet
 
                         // compute the "heaviest" component, that is, accumulate all paths
@@ -676,7 +499,7 @@ object DynamicWorklistAlgorithms:
                         val floydwarshallWeights = FloydWarshall.floydwarshall(nodes, edges, weights, Double.PositiveInfinity)
                         priorities = nodes
                             .map(destination =>
-                                destination -> nodes
+                                destination -> nodes // realise that we have '->' here, which means that we construct a pair
                                     .flatMap(source => floydwarshallWeights.get((source, destination)).map(Math.abs))
                                     .foldLeft(0.0)(_ + _)
                             )
@@ -708,105 +531,6 @@ object DynamicWorklistAlgorithms:
                 new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
         }
 
-    def call_dependencies_only_with_Tarjan(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with OnlyDependenciesFirstWorklistAlgorithmPOC_Tarjan[SchemeExp] {
-            val k = theK
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
-        }
-
-    def liveAnalysis(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with GlobalStore[SchemeExp]
-            with LiveLeastDependenciesFirstWorklistAlgorithm[SchemeExp] {
-            val k = theK
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
-        }
-
-    def liveAnalysis_CallsOnly_With_Check(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with GlobalStore[SchemeExp]
-            with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check2[SchemeExp] {
-            val k = theK
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
-        }
-
-    def liveAnalysis_CallersOnly_With_Check(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with GlobalStore[SchemeExp]
-            with LiveLeastDependenciesFirstWorklistAlgorithm_CallersOnly_With_Check[SchemeExp] {
-            val k = theK
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntraa
-        }
-
-    def liveAnalysis_Main_Last(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with GlobalStore[SchemeExp]
-            with Main_Last_Heuristic[SchemeExp] {
-            val k = theK
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
-        }
-
-    def liveAnalysis_CallsOnly_Without_Check(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with GlobalStore[SchemeExp]
-            with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_Without_Check[SchemeExp] {
-            val k = theK
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntraaa
-        }
-
-    def weirdest_analysis(theK: Int)(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFKCallSiteSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with GlobalStore[SchemeExp]
-            with WeirdestHeuristic[SchemeExp] {
-            val k = theK
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with DependencyTrackingIntra
-        }
-
-    val bench2: Map[String, String] = List(
-      ("test/R5RS/gambit/sboyer.scm", "sboyer")
-    ).toMap
-
-    val bench3: Map[String, String] = List(
-      ("test/R5RS/gambit/sboyer.scm", "sboyer")
-    ).toMap
-
-    def vectorSum(vec: Vector[Long]): Long = {
-        var sum: Long = 0
-        for (i <- vec.indices) {
-            sum = sum + vec(i)
-        }
-        sum
-    }
-
     val analyses = List(
       //("random", randomAnalysis),
       ("FIFO", FIFOanalysis),
@@ -814,11 +538,6 @@ object DynamicWorklistAlgorithms:
       ("INFLOW", deprioritizeLargeInflow),
       ("FAIR", fairness),
       ("INFLOW'", gravitateInflow)
-      //("LDP", least_dependencies_first),
-      //("POC", call_dependencies_only_with_Tarjan),
-      //("LIVE", liveAnalysis),
-      //("CAD", liveAnalysis_CallersOnly_With_Check),
-      //("CED", liveAnalysis_CallersOnly_With_Check)
     )
 
     type Analysis = SimpleSchemeModFAnalysis & DependencyTracking[SchemeExp]

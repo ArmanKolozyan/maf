@@ -2,10 +2,6 @@ package maf.cli.runnables
 
 import maf.bench.scheme.SchemeBenchmarkPrograms
 import maf.cli.experiments.SchemeAnalyses
-import maf.cli.runnables.DynamicWorklistAlgorithms.{
-    LeastDependenciesFirstWorklistAlgorithmPOC,
-    LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check
-}
 import maf.core.{Address, Identifier, Monad}
 import maf.language.CScheme.CSchemeParser
 import maf.language.scheme.*
@@ -104,16 +100,6 @@ object AnalyzeWorklistAlgorithms extends App:
 
     //def smallerEnvironmentFirstAnalysis(program: SchemeExp) = new BasicAnalysis(program) with SmallerEnvironmentFirstWorklistAlgorithm.ModF
 
-    def liveAnalysis_CallsOnly_With_Check(program: SchemeExp) =
-        new SimpleSchemeModFAnalysis(program)
-            with SchemeModFNoSensitivity
-            with SchemeConstantPropagationDomain
-            with DependencyTracking[SchemeExp]
-            with GlobalStore[SchemeExp]
-            with LiveLeastDependenciesFirstWorklistAlgorithm_CallsOnly_With_Check[SchemeExp] {
-            override def intraAnalysis(cmp: SchemeModFComponent) =
-                new IntraAnalysis(cmp) with BigStepModFIntra with LiveDependencyTrackingIntra
-        }
 
     //def depAnalysis(program: SchemeExp) = new BasicAnalysis(program) with LeastDependenciesFirstWorklistAlgorithmPOC[SchemeExp]
 
