@@ -1,11 +1,5 @@
 import maf.cli.runnables.AnalyzeWorklistAlgorithms.{FIFOanalysis, LIFOanalysis}
 import maf.cli.runnables.DynamicWorklistAlgorithms.{
-    call_dependencies_only,
-    least_dependencies_first,
-    liveAnalysis,
-    liveAnalysis_CallsOnly_With_Check,
-    liveAnalysis_CallsOnly_Without_Check,
-    most_dependencies_first,
     randomAnalysis,
     SchemeAnalysisWithDeps
 }
