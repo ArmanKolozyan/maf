@@ -20,7 +20,7 @@ import maf.modular.worklist.{
 }
 import maf.util.Reader
 import maf.util.benchmarks.{Statistics, Timeout, Timer}
-import maf.util.graph.{Tarjan, TopSort}
+import maf.util.graph.{BellmanFord, FloydWarshall, Tarjan, TopSort}
 import maf.util.Wrapper.instance
 import maf.util.Wrapper2.instance
 
@@ -35,7 +35,7 @@ import maf.util.Writer
 import maf.cli.experiments.worklist.ProgramGenerator
 import maf.modular.*
 import maf.util.MapUtil.invert
-import maf.util.graph.FloydWarshall
+
 import java.io.ByteArrayInputStream
 
 object DynamicWorklistAlgorithms:
@@ -505,6 +505,19 @@ object DynamicWorklistAlgorithms:
                             )
                             .toMap
 
+                        val (sccs, sccEdges) = Tarjan.collapse(nodes, edges)
+                        val hasNegativeCycle = BellmanFord.hasNegativeCycle(nodes, edges, weights, Double.PositiveInfinity)
+
+                        println(s"NUMBER OF NODES: ${nodes.toList.length}")
+                        println(s"NUMBER OF SCCS: ${sccs.toList.length}")
+                        println(s"HAS NEGATIVE CYCLES: ${hasNegativeCycle}")
+                        println(s"MAX WEIGHT: ${weights.values.max}")
+                        println(s"MIN WEIGHT: ${weights.values.min}")
+                        println(s"MAX Floyd Warshall WEIGHT: ${floydwarshallWeights.values.max}")
+                        println(s"MIN Floyd Warshall WEIGHT: ${floydwarshallWeights.values.min}")
+                        println(s"MAX PRIORITY: ${priorities.values.max}")
+                        println(s"MIN PRIORITY: ${priorities.values.min}")
+
                         val edgesDot: Map[String, Set[String]] = edges.map { case (k, v) =>
                             (k.toString, v.map(_.toString()))
                         }
@@ -533,10 +546,10 @@ object DynamicWorklistAlgorithms:
 
     val analyses = List(
       //("random", randomAnalysis),
-      ("FIFO", FIFOanalysis),
-      ("LIFO", LIFOanalysis),
-      ("INFLOW", deprioritizeLargeInflow),
-      ("FAIR", fairness),
+   //   ("FIFO", FIFOanalysis),
+   //   ("LIFO", LIFOanalysis),
+   //   ("INFLOW", deprioritizeLargeInflow),
+     // ("FAIR", fairness),
       ("INFLOW'", gravitateInflow)
     )
 
@@ -645,8 +658,20 @@ object DynamicWorklistAlgorithms:
       ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "icp_1c_prime-sum-pair")
     ).toMap
 
+    private lazy val synth_arman: Map[String, String] =
+        Map(ProgramGenerator.upflow2(3) -> "upflow_arman")
+
+    lazy val suites_arman: Map[String, BenchmarkSuite] = Map(
+        "synthetic" -> Synthetic(synth_arman),
+    )
+
     def main(args: Array[String]): Unit =
-        if args.isEmpty then println("No benchmark suites to execute")
+
+        val suite = suites_arman("synthetic")
+        benchmark(suite.benchmarks, analyses)(s"output/synthetic_arman_out.csv", suite.load)
+
+
+        /*if args.isEmpty then println("No benchmark suites to execute")
         else
             val found = args.filter(name => !suites.contains(name))
             if found.length > 0 then println(s"Could not find the following benchmark suites: ${found.mkString(",")}")
@@ -654,4 +679,4 @@ object DynamicWorklistAlgorithms:
                 args.foreach { arg =>
                     val suite = suites(arg)
                     benchmark(suite.benchmarks, analyses)(s"output/${arg}_out.csv", suite.load)
-                }
+                }*/
