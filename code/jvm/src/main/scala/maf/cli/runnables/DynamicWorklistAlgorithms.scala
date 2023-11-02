@@ -49,10 +49,10 @@ object DynamicWorklistAlgorithms:
 
         // must first be called to provide the heuristic its perfect knowledge
         def updateDependencies(
-            deps: mutable.Map[Component, mutable.Set[Component]],
-            readDeps: Map[Component, Set[Address]],
-            writeDeps: Map[Component, Set[Address]],
-          ): Unit =
+                                  deps: mutable.Map[Component, mutable.Set[Component]],
+                                  readDeps: Map[Component, Set[Address]],
+                                  writeDeps: Map[Component, Set[Address]],
+                              ): Unit =
 
             // adding read and write dependencies to the graph that is in DependencyTracking
             for {
@@ -166,7 +166,7 @@ object DynamicWorklistAlgorithms:
                 val (sccs, sccEdges) = Tarjan.collapse(graph.keys.toSet, graph.map { case (k, v) => (k, v.toSet) }.toMap)
 
                 if sccs.toList.length == 1 then
-                    // code to only work with call dependencies
+                // code to only work with call dependencies
                     dependencies.keySet.foreach(comp => {
                         val currDep = dependencies.getOrElse(comp, Set.empty)
                         depCount += (comp -> {
@@ -240,7 +240,7 @@ object DynamicWorklistAlgorithms:
 
     trait TopSort_CallDeps_Live_With_Check[Expr <: Expression](priority: Priority)
         extends PriorityQueueWorklistAlgorithm[Expr]
-        with DependencyTracking[Expr]:
+            with DependencyTracking[Expr]:
         var depCount: Map[Component, Int] = Map.empty.withDefaultValue(0)
         lazy val ordering: Ordering[Component] = Ordering.by(cmp => depCount(cmp))(Ordering.Int)
         var old_graph: mutable.Map[Component, mutable.Set[Component]] = mutable.Map()
@@ -420,6 +420,26 @@ object DynamicWorklistAlgorithms:
                         }
         }
 
+
+    // Checks if adding an edge creates a cycle (by using BFS).
+    def doesEdgeCreateCycle[Node,Component](graph: Map[Node, Set[Node]], from: Node, to: Node): Boolean = {
+        val visited = mutable.Set[Node]()
+        val queue = mutable.Queue[Node](to)
+
+        while queue.nonEmpty do {
+            val currentNode = queue.dequeue()
+            if currentNode == from then
+                return true // adding the edge would create a cycle
+
+            visited += currentNode
+            for (neighbor <- graph.getOrElse(currentNode, Set.empty) if !visited.contains(neighbor)) {
+                queue.enqueue(neighbor)
+            }
+        }
+
+        false // no cycle is introduced
+    }
+
     /**
      * Experiment where components are prioritized where a large flow of values is orginating from, we do this by calculating the most expensive path
      * (in term of value flow) from each node to the nodes in the target node in the worklist. To this end, the flow edges are **reversed** such that
@@ -479,7 +499,7 @@ object DynamicWorklistAlgorithms:
                             tos.foldLeft(result)((result, to) => // all the components that write to this address
                                 val count: Double = dependencyTriggerCount.get(AddrDependency(adr)).map(_.toDouble).getOrElse(0.0)
                                 result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
-                              // ^ updating weight of the edge adr -> comp (where comp writes to adr)
+                                // ^ updating weight of the edge adr -> comp (where comp writes to adr)
                             )
                         }
                         // set the read edges to 0
@@ -488,6 +508,7 @@ object DynamicWorklistAlgorithms:
                         }
 
                         val edges: Map[Node, Set[Node]] = (Rs.toSeq ++ Ws.toSeq).groupBy(_._1).view.mapValues(d => d.flatMap(_._2).toSet).toMap
+
 
                         // the nodes are all nodes that participate in the Rs and Ws edge sets
                         // forallEdges transforms (from, tos) to ((from,to_1), (from,to_2), ...)
@@ -545,23 +566,23 @@ object DynamicWorklistAlgorithms:
         }
 
     val analyses = List(
-      //("random", randomAnalysis),
-   //   ("FIFO", FIFOanalysis),
-   //   ("LIFO", LIFOanalysis),
-   //   ("INFLOW", deprioritizeLargeInflow),
-     // ("FAIR", fairness),
-      ("INFLOW'", gravitateInflow)
+        //("random", randomAnalysis),
+        //   ("FIFO", FIFOanalysis),
+        //   ("LIFO", LIFOanalysis),
+        //   ("INFLOW", deprioritizeLargeInflow),
+        // ("FAIR", fairness),
+        ("INFLOW'", gravitateInflow)
     )
 
     type Analysis = SimpleSchemeModFAnalysis & DependencyTracking[SchemeExp]
 
     def benchmark(
-        bench: Map[String, String],
-        analyses: List[(String, Int => SchemeExp => Analysis)]
-      )(
-        output: String,
-        loadFile: (String => String) = Reader.loadFile
-      ): Unit =
+                     bench: Map[String, String],
+                     analyses: List[(String, Int => SchemeExp => Analysis)]
+                 )(
+                     output: String,
+                     loadFile: (String => String) = Reader.loadFile
+                 ): Unit =
         var outputTable: Table[Option[Double]] = Table.empty(default = None)
         bench.toList
             .cartesian(analyses)
@@ -616,8 +637,8 @@ object DynamicWorklistAlgorithms:
         def load(name: String): String = name
 
     lazy val suites: Map[String, BenchmarkSuite] = Map(
-      "all" -> RealWorld(bench),
-      "synthetic" -> Synthetic(synth),
+        "all" -> RealWorld(bench),
+        "synthetic" -> Synthetic(synth),
     ) ++ (bench.map { case (k, v) => v -> RealWorld(Map(k -> v)) })
 
     private lazy val synth: Map[String, String] =
@@ -627,35 +648,35 @@ object DynamicWorklistAlgorithms:
         (upflow1s ++ upflow2s).toMap
 
     private lazy val bench: Map[String, String] = List(
-      ("test/R5RS/gambit/scheme.scm", "scheme"),
-      ("test/R5RS/icp/icp_7_eceval.scm", "eceval"),
-      ("test/R5RS/icp/icp_1c_multiple-dwelling.scm", "multiple-dwelling"),
-      ("test/R5RS/gambit/sboyer.scm", "sboyer"),
-      ("test/R5RS/gambit/peval.scm", "peval"),
-      ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "prime-sum-pair"),
-      ("test/R5RS/WeiChenRompf2019/toplas98/boyer.scm", "boyer"),
-      ("test/R5RS/various/SICP-compiler.scm", "SICP-compiler"),
-      ("test/R5RS/icp/icp_8_compiler.scm", "compiler"),
-      ("test/R5RS/scp1/family-budget.scm", "family-budget"),
-      ("test/R5RS/scp1/draw-umbrella.scm", "draw-umbrella"),
-      // Gabriel
-      ("test/R5RS/gabriel/triangl.scm", "triangl"),
-      ("test/R5RS/gabriel/browse.scm", "browse"),
-      ("test/R5RS/gabriel/diviter.scm", "diviter"),
-      ("test/R5RS/gabriel/cpstak.scm", "cpstak"),
-      ("test/R5RS/gabriel/divrec.scm", "divrec"),
-      ("test/R5RS/gabriel/dderiv.scm", "dderiv"),
-      ("test/R5RS/gabriel/destruc.scm", "destruct"),
-      ("test/R5RS/gabriel/deriv.scm", "deriv"),
-      ("test/R5RS/gabriel/takl.scm", "takl"),
-      ("test/R5RS/gabriel/puzzle.scm", "puzzle"),
-      // Other
-      //("test/R5RS/VUB-projects/railway-control-system.scm", "railway-control-system"),
-      //("test/R5RS/VUB-projects/frogger.scm", "frogger"),
-      ("test/R5RS/various/pico.scm", "pico"),
-      //("test/R5RS/github/google-schism.scm", "google-schism"),
-      ("test/R5RS/gambit/matrix.scm", "matrix"),
-      ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "icp_1c_prime-sum-pair")
+        ("test/R5RS/gambit/scheme.scm", "scheme"),
+        ("test/R5RS/icp/icp_7_eceval.scm", "eceval"),
+        ("test/R5RS/icp/icp_1c_multiple-dwelling.scm", "multiple-dwelling"),
+        ("test/R5RS/gambit/sboyer.scm", "sboyer"),
+        ("test/R5RS/gambit/peval.scm", "peval"),
+        ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "prime-sum-pair"),
+        ("test/R5RS/WeiChenRompf2019/toplas98/boyer.scm", "boyer"),
+        ("test/R5RS/various/SICP-compiler.scm", "SICP-compiler"),
+        ("test/R5RS/icp/icp_8_compiler.scm", "compiler"),
+        ("test/R5RS/scp1/family-budget.scm", "family-budget"),
+        ("test/R5RS/scp1/draw-umbrella.scm", "draw-umbrella"),
+        // Gabriel
+        ("test/R5RS/gabriel/triangl.scm", "triangl"),
+        ("test/R5RS/gabriel/browse.scm", "browse"),
+        ("test/R5RS/gabriel/diviter.scm", "diviter"),
+        ("test/R5RS/gabriel/cpstak.scm", "cpstak"),
+        ("test/R5RS/gabriel/divrec.scm", "divrec"),
+        ("test/R5RS/gabriel/dderiv.scm", "dderiv"),
+        ("test/R5RS/gabriel/destruc.scm", "destruct"),
+        ("test/R5RS/gabriel/deriv.scm", "deriv"),
+        ("test/R5RS/gabriel/takl.scm", "takl"),
+        ("test/R5RS/gabriel/puzzle.scm", "puzzle"),
+        // Other
+        //("test/R5RS/VUB-projects/railway-control-system.scm", "railway-control-system"),
+        //("test/R5RS/VUB-projects/frogger.scm", "frogger"),
+        ("test/R5RS/various/pico.scm", "pico"),
+        //("test/R5RS/github/google-schism.scm", "google-schism"),
+        ("test/R5RS/gambit/matrix.scm", "matrix"),
+        ("test/R5RS/icp/icp_1c_prime-sum-pair.scm", "icp_1c_prime-sum-pair")
     ).toMap
 
     private lazy val synth_arman: Map[String, String] =
@@ -671,12 +692,12 @@ object DynamicWorklistAlgorithms:
         benchmark(suite.benchmarks, analyses)(s"output/synthetic_arman_out.csv", suite.load)
 
 
-        /*if args.isEmpty then println("No benchmark suites to execute")
-        else
-            val found = args.filter(name => !suites.contains(name))
-            if found.length > 0 then println(s"Could not find the following benchmark suites: ${found.mkString(",")}")
-            else
-                args.foreach { arg =>
-                    val suite = suites(arg)
-                    benchmark(suite.benchmarks, analyses)(s"output/${arg}_out.csv", suite.load)
-                }*/
+/*if args.isEmpty then println("No benchmark suites to execute")
+else
+    val found = args.filter(name => !suites.contains(name))
+    if found.length > 0 then println(s"Could not find the following benchmark suites: ${found.mkString(",")}")
+    else
+        args.foreach { arg =>
+            val suite = suites(arg)
+            benchmark(suite.benchmarks, analyses)(s"output/${arg}_out.csv", suite.load)
+        }*/
