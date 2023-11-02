@@ -66,7 +66,7 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
     def initialComponent: Component
     def expr(cmp: Component): Expr
 
-    var counter: Int = 0
+    var num_analyses: Int = 0
 
     var timeMap: Map[String, Double] = Map()
 
@@ -134,7 +134,7 @@ abstract class ModAnalysis[Expr <: Expression](val program: Expr) extends Clonea
 
         /** Pushes the local changes to the global analysis state. */
         def commit(): Unit =
-            counter = counter + 1
+            num_analyses = num_analyses + 1
             R.foreach(inter.register(component, _))
             W.reverse.foreach(dep => if doWrite(dep) then inter.trigger(dep))
             C.foreach(inter.spawn(_, component))
