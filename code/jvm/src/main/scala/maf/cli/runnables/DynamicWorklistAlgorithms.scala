@@ -465,6 +465,11 @@ object DynamicWorklistAlgorithms:
             /** A map that keeps track of all the write edges (= inverted writeEffects) */
             private var Ws: Map[Node, Set[Node]] = Map()
 
+            var old_reads: Int = -1
+
+            var old_writes: Int = -1
+
+
             enum Node:
                 case AdrNode(adr: Address)
                 case CmpNode(cmp: Component)
@@ -482,9 +487,6 @@ object DynamicWorklistAlgorithms:
 
                         given Ordering[Double] = Ordering.Double.TotalOrdering
 
-                        // TODO: actually we will need the write and read dependencies to have a complete graph
-                        // the read dependencies don't have to be inverted, but the write dependencies need
-                        // to be inverted.
 
                         // the read dependencies make a flow from a component to an address possible
                         val Rs: Map[Node, Set[Node]] = readDependencies.map { case (k, v) => (Node.CmpNode(k) -> v.map(Node.AdrNode.apply)) }
@@ -493,86 +495,92 @@ object DynamicWorklistAlgorithms:
                         Ws = writeEffects.invert.foldLeft(Ws) { case (ws2, (from, tos)) =>
                             ws2 + (Node.AdrNode(from) -> tos.map(Node.CmpNode.apply))
                         }
-                        // the weights of the write edges correspond to the number of times they have been triggered,
-                        // but with a reversed sign. This is to ensure that the shortest path chooses the edges
-                        // with the smallest weight (thus the biggest flow) for its calculations.
-                        weights = Ws.foldLeft(weights) { case (result, (from@Node.AdrNode(adr), tos)) =>
-                            tos.foldLeft(result)((result, to) => // all the components that write to this address
-                                val count: Double = dependencyTriggerCount.get(AddrDependency(adr)).map(_.toDouble).getOrElse(0.0)
-                                result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
-                                // ^ updating weight of the edge adr -> comp (where comp writes to adr)
-                            )
-                        }
-                        // set the read edges to 0
-                        weights = forallEdges(Rs).foldLeft(weights) { case (result, (from, to)) =>
-                            result.updated((from, to), 0)
-                        }
 
-                        // initializing the edges and nodes as empty
-                        var edges: Map[Node, Set[Node]] = Map.empty
-                        var nodes: Set[Node] = Set.empty
+                        if old_reads != Rs.size || old_writes != Ws.size then
+                            old_reads = Rs.size
+                            old_writes = Ws.size
 
-                        // adding all write edges at once
-                        for ((from, toSet) <- writeEffects.invert) {
-                            val fromNode = Node.AdrNode(from)
-                            val toNodes = toSet.map(Node.CmpNode.apply)
+                            // TODO: actually we will need the write and read dependencies to have a complete graph
+                            // the read dependencies don't have to be inverted, but the write dependencies need
+                            // to be inverted.
 
-                            edges += fromNode -> toNodes
-                            nodes += fromNode
-                            nodes ++= toNodes
-                        }
+                            // the weights of the write edges correspond to the number of times they have been triggered,
+                            // but with a reversed sign. This is to ensure that the shortest path chooses the edges
+                            // with the smallest weight (thus the biggest flow) for its calculations.
+                            weights = Ws.foldLeft(weights) { case (result, (from@Node.AdrNode(adr), tos)) =>
+                                tos.foldLeft(result)((result, to) => // all the components that write to this address
+                                    val count: Double = dependencyTriggerCount.get(AddrDependency(adr)).map(_.toDouble).getOrElse(0.0)
+                                    result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
+                                    // ^ updating weight of the edge adr -> comp (where comp writes to adr)
+                                )
+                            }
+                            // set the read edges to 0
+                            weights = forallEdges(Rs).foldLeft(weights) { case (result, (from, to)) =>
+                                result.updated((from, to), 0)
+                            }
 
-                        // processing read dependencies one by one, checking for cycles
-                        // only adding the edge if no cycle is introduced
-                        for ((from, toSet) <- readDependencies) do {
-                            val fromNode = Node.CmpNode(from)
-                            val toNodes = toSet.map(Node.AdrNode.apply)
+                            // initializing the edges and nodes as empty
+                            var edges: Map[Node, Set[Node]] = Map.empty
+                            var nodes: Set[Node] = Set.empty
 
-                            for (toNode <- toNodes) {
-                                if !doesEdgeCreateCycle[Node,Component](edges,fromNode,toNode) then {
-                                    edges += fromNode -> (edges.getOrElse(fromNode, Set.empty) + toNode)
-                                    nodes += fromNode
-                                    nodes += toNode
+                            // adding all write edges at once
+                            for ((from, toSet) <- writeEffects.invert) {
+                                val fromNode = Node.AdrNode(from)
+                                val toNodes = toSet.map(Node.CmpNode.apply)
+
+                                edges += fromNode -> toNodes
+                                nodes += fromNode
+                                nodes ++= toNodes
+                            }
+
+                            // processing read dependencies one by one, checking for cycles
+                            // only adding the edge if no cycle is introduced
+                            for ((from, toSet) <- readDependencies) do {
+                                val fromNode = Node.CmpNode(from)
+                                val toNodes = toSet.map(Node.AdrNode.apply)
+
+                                for (toNode <- toNodes) {
+                                    if !doesEdgeCreateCycle[Node,Component](edges,fromNode,toNode) then {
+                                        edges += fromNode -> (edges.getOrElse(fromNode, Set.empty) + toNode)
+                                        nodes += fromNode
+                                        nodes += toNode
+                                    }
                                 }
                             }
-                        }
 
 
-                        // compute the "heaviest" component, that is, accumulate all paths
-                        // that end with this node, and sum their maximal weight together,
-                        // then we compute priority over that
-                        val floydwarshallWeights = FloydWarshall.floydwarshall(nodes, edges, weights, Double.PositiveInfinity)
-                        priorities = nodes
-                            .map(destination =>
-                                destination -> nodes // realise that we have '->' here, which means that we construct a pair
-                                    .flatMap(source => floydwarshallWeights.get((source, destination)).map(Math.abs))
-                                    .foldLeft(0.0)(_ + _)
-                            )
-                            .toMap
+                            // compute the "heaviest" component, that is, accumulate all paths
+                            // that end with this node, and sum their maximal weight together,
+                            // then we compute priority over that
+                            val floydwarshallWeights = FloydWarshall.floydwarshall(nodes, edges, weights, Double.PositiveInfinity)
+                            priorities = nodes
+                                .map(destination =>
+                                    destination -> nodes // realise that we have '->' here, which means that we construct a pair
+                                        .flatMap(source => floydwarshallWeights.get((source, destination)).map(Math.abs))
+                                        .foldLeft(0.0)(_ + _)
+                                )
+                                .toMap
 
-                        println("---")
-                        println(num_analyses)
+                            val (sccs, sccEdges) = Tarjan.collapse(nodes, edges)
+                            val hasNegativeCycle = BellmanFord.hasNegativeCycle(nodes, edges, weights, Double.PositiveInfinity)
 
-                        val (sccs, sccEdges) = Tarjan.collapse(nodes, edges)
-                        val hasNegativeCycle = BellmanFord.hasNegativeCycle(nodes, edges, weights, Double.PositiveInfinity)
+    //                        println(s"NUMBER OF NODES: ${nodes.toList.length}")
+    //                        println(s"NUMBER OF SCCS: ${sccs.toList.length}")
+    //                        println(s"HAS NEGATIVE CYCLES: ${hasNegativeCycle}")
+    //                        println(s"MAX WEIGHT: ${weights.values.max}")
+    //                        println(s"MIN WEIGHT: ${weights.values.min}")
+    //                        println(s"MAX Floyd Warshall WEIGHT: ${floydwarshallWeights.values.max}")
+    //                        println(s"MIN Floyd Warshall WEIGHT: ${floydwarshallWeights.values.min}")
+    //                        println(s"MAX PRIORITY: ${priorities.values.max}")
+    //                        println(s"MIN PRIORITY: ${priorities.values.min}")
 
-//                        println(s"NUMBER OF NODES: ${nodes.toList.length}")
-//                        println(s"NUMBER OF SCCS: ${sccs.toList.length}")
-//                        println(s"HAS NEGATIVE CYCLES: ${hasNegativeCycle}")
-//                        println(s"MAX WEIGHT: ${weights.values.max}")
-//                        println(s"MIN WEIGHT: ${weights.values.min}")
-//                        println(s"MAX Floyd Warshall WEIGHT: ${floydwarshallWeights.values.max}")
-//                        println(s"MIN Floyd Warshall WEIGHT: ${floydwarshallWeights.values.min}")
-//                        println(s"MAX PRIORITY: ${priorities.values.max}")
-//                        println(s"MIN PRIORITY: ${priorities.values.min}")
+                            val edgesDot: Map[String, Set[String]] = edges.map { case (k, v) =>
+                                (k.toString, v.map(_.toString()))
+                            }
+                            val dot = VisualizeTriggers.toDot(edgesDot, weights.map { case ((from, to), v) => (from.toString(), v.toInt) }.toMap)
 
-                        val edgesDot: Map[String, Set[String]] = edges.map { case (k, v) =>
-                            (k.toString, v.map(_.toString()))
-                        }
-                        val dot = VisualizeTriggers.toDot(edgesDot, weights.map { case ((from, to), v) => (from.toString(), v.toInt) }.toMap)
-
-                        import scala.sys.process.*
-                        ((s"sfdp -x -Goverlap=scale -Tpdf -o /tmp/frame-final.pdf") #< ByteArrayInputStream(dot.getBytes())).!!
+                            import scala.sys.process.*
+                            ((s"sfdp -x -Goverlap=scale -Tpdf -o /tmp/frame-final.pdf") #< ByteArrayInputStream(dot.getBytes())).!!
 
         }
 
@@ -692,10 +700,10 @@ object DynamicWorklistAlgorithms:
         //("random", randomAnalysis),
         //   ("FIFO", FIFOanalysis),
         //   ("LIFO", LIFOanalysis),
-           ("INFLOW", deprioritizeLargeInflow),
+        //   ("INFLOW", deprioritizeLargeInflow),
         // ("FAIR", fairness),
-       // ("INFLOW'", gravitateInflow),
-       // ("INFLOW_WITH_CYCLE_CHECK", gravitateInflow_with_Cycle_Check)
+      //  ("INFLOW'", gravitateInflow),
+         ("INFLOW_WITH_CYCLE_CHECK", gravitateInflow_with_Cycle_Check)
     )
 
     type Analysis = SimpleSchemeModFAnalysis & DependencyTracking[SchemeExp]
