@@ -499,6 +499,7 @@ object DynamicWorklistAlgorithms:
                         if old_reads != Rs.size || old_writes != Ws.size then
                             old_reads = Rs.size
                             old_writes = Ws.size
+                            weights = Map()
 
                             // TODO: actually we will need the write and read dependencies to have a complete graph
                             // the read dependencies don't have to be inverted, but the write dependencies need
@@ -633,6 +634,7 @@ object DynamicWorklistAlgorithms:
 
                         given Ordering[Double] = Ordering.Double.TotalOrdering
 
+                        weights = Map()
 
                         // TODO: actually we will need the write and read dependencies to have a complete graph
                         // the read dependencies don't have to be inverted, but the write dependencies need
