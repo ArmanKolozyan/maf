@@ -445,7 +445,7 @@ object DynamicWorklistAlgorithms:
      * (in term of value flow) from each node to the nodes in the target node in the worklist. To this end, the flow edges are **reversed** such that
      * if there exists a flow from a -> b, the edge will be b -> a.
      */
-    def gravitateInflow_with_Cycle_Check(theK: Int)(program: SchemeExp) =
+    def gravitateInflow_with_Cycle_Check(distinguish: Boolean)(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
@@ -508,11 +508,19 @@ object DynamicWorklistAlgorithms:
                             // but with a reversed sign. This is to ensure that the shortest path chooses the edges
                             // with the smallest weight (thus the biggest flow) for its calculations.
                             weights = Ws.foldLeft(weights) { case (result, (from@Node.AdrNode(adr), tos)) =>
-                                tos.foldLeft(result)((result, to) => // all the components that write to this address
-                                    val count: Double = dependencyTriggerCount.get(AddrDependency(adr)).map(_.toDouble).getOrElse(0.0)
+                                tos.foldLeft(result) { case (result, to@Node.CmpNode(comp)) => // all the components that write to this address
+                                    val count: Double =
+                                        if distinguish then
+                                            dependencyTriggerCount_distinguish
+                                              .get((AddrDependency(adr), comp))
+                                              .map(_.toDouble).getOrElse(0.0) else
+                                            dependencyTriggerCount
+                                              .get(AddrDependency(adr))
+                                              .map(_.toDouble)
+                                              .getOrElse(0.0)
                                     result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
                                     // ^ updating weight of the edge adr -> comp (where comp writes to adr)
-                                )
+                                }
                             }
                             // set the read edges to 0
                             weights = forallEdges(Rs).foldLeft(weights) { case (result, (from, to)) =>
@@ -589,7 +597,7 @@ object DynamicWorklistAlgorithms:
      * (in term of value flow) from each node to the nodes in the target node in the worklist. To this end, the flow edges are **reversed** such that
      * if there exists a flow from a -> b, the edge will be b -> a.
      */
-    def gravitateInflow(theK: Int)(program: SchemeExp) =
+    def gravitateInflow(distinguish: Boolean)(theK: Int)(program: SchemeExp) =
         new SimpleSchemeModFAnalysis(program)
             with SchemeModFKCallSiteSensitivity
             with SchemeConstantPropagationDomain
@@ -640,11 +648,19 @@ object DynamicWorklistAlgorithms:
                         // but with a reversed sign. This is to ensure that the shortest path chooses the edges
                         // with the smallest weight (thus the biggest flow) for its calculations.
                         weights = Ws.foldLeft(weights) { case (result, (from @ Node.AdrNode(adr), tos)) =>
-                            tos.foldLeft(result)((result, to) => // all the components that write to this address
-                                val count: Double = dependencyTriggerCount.get(AddrDependency(adr)).map(_.toDouble).getOrElse(0.0)
+                            tos.foldLeft(result) { case (result, to@Node.CmpNode(comp)) => // all the components that write to this address
+                                val count: Double =
+                                    if distinguish then
+                                        dependencyTriggerCount_distinguish
+                                          .get((AddrDependency(adr), comp))
+                                          .map(_.toDouble).getOrElse(0.0) else
+                                        dependencyTriggerCount
+                                          .get(AddrDependency(adr))
+                                          .map(_.toDouble)
+                                          .getOrElse(0.0)
                                 result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
                                 // ^ updating weight of the edge adr -> comp (where comp writes to adr)
-                            )
+                            }
                         }
                         // set the read edges to 0
                         weights = forallEdges(Rs).foldLeft(weights) { case (result, (from, to)) =>
@@ -697,13 +713,15 @@ object DynamicWorklistAlgorithms:
         }
 
     val analyses = List(
-        //("random", randomAnalysis),
-        //   ("FIFO", FIFOanalysis),
-        //   ("LIFO", LIFOanalysis),
-        //   ("INFLOW", deprioritizeLargeInflow),
-        // ("FAIR", fairness),
-      //  ("INFLOW'", gravitateInflow),
-         ("INFLOW_WITH_CYCLE_CHECK", gravitateInflow_with_Cycle_Check)
+        ("random", randomAnalysis),
+        ("FIFO", FIFOanalysis),
+        ("LIFO", LIFOanalysis),
+        ("INFLOW", deprioritizeLargeInflow),
+        ("FAIR", fairness),
+        ("INFLOW'", gravitateInflow(false)),
+        ("INFLOW'_Distinguish", gravitateInflow(true)),
+        ("INFLOW'_WITH_CYCLE_CHECK", gravitateInflow_with_Cycle_Check(false)),
+        ("INFLOW'_WITH_CYCLE_CHECK_Distinguish", gravitateInflow_with_Cycle_Check(true))
     )
 
     type Analysis = SimpleSchemeModFAnalysis & DependencyTracking[SchemeExp]
@@ -822,9 +840,9 @@ object DynamicWorklistAlgorithms:
 
     def main(args: Array[String]): Unit =
 
-        val suite = suites("dderiv")
-        benchmark(suite.benchmarks, analyses)(s"output/synthetic_arman_out.csv", suite.load)
-
+        suites.values.foreach { suite =>
+            benchmark(suite.benchmarks, analyses)(s"output/${suite}_out.csv", suite.load)
+        }
 
 /*if args.isEmpty then println("No benchmark suites to execute")
 else
