@@ -455,7 +455,7 @@ object DynamicWorklistAlgorithms:
 
             // TODO: this is the same as the deprioritizeInflow, this should change
             lazy val ordering: Ordering[Component] = Ordering.by((cmp: Component) => priorities.getOrElse(cmp, 0.0))(Ordering.Double.TotalOrdering)
-
+          //  lazy val ordering: Ordering[Component] = Ordering.by(priorities)(Ordering.Double.TotalOrdering)
             /** A map of edge weights corresponding to the number of triggers for that particular edge (inverted) */
             private var priorities: Map[Any, Double] = Map().withDefaultValue(0)
 
@@ -518,7 +518,7 @@ object DynamicWorklistAlgorithms:
                                               .get(AddrDependency(adr))
                                               .map(_.toDouble)
                                               .getOrElse(0.0)
-                                    result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
+                                    result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(-count)))
                                     // ^ updating weight of the edge adr -> comp (where comp writes to adr)
                                 }
                             }
@@ -569,8 +569,8 @@ object DynamicWorklistAlgorithms:
                                 )
                                 .toMap
 
-                            val (sccs, sccEdges) = Tarjan.collapse(nodes, edges)
-                            val hasNegativeCycle = BellmanFord.hasNegativeCycle(nodes, edges, weights, Double.PositiveInfinity)
+                           // val (sccs, sccEdges) = Tarjan.collapse(nodes, edges)
+                           // val hasNegativeCycle = BellmanFord.hasNegativeCycle(nodes, edges, weights, Double.PositiveInfinity)
 
     //                        println(s"NUMBER OF NODES: ${nodes.toList.length}")
     //                        println(s"NUMBER OF SCCS: ${sccs.toList.length}")
@@ -633,6 +633,7 @@ object DynamicWorklistAlgorithms:
 
                         given Ordering[Double] = Ordering.Double.TotalOrdering
 
+
                         // TODO: actually we will need the write and read dependencies to have a complete graph
                         // the read dependencies don't have to be inverted, but the write dependencies need
                         // to be inverted.
@@ -658,7 +659,7 @@ object DynamicWorklistAlgorithms:
                                           .get(AddrDependency(adr))
                                           .map(_.toDouble)
                                           .getOrElse(0.0)
-                                result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(0.0)))
+                                result.updatedWith((from, to))(v => Some(v.map(_ - count).getOrElse(-count)))
                                 // ^ updating weight of the edge adr -> comp (where comp writes to adr)
                             }
                         }
@@ -741,7 +742,15 @@ object DynamicWorklistAlgorithms:
                 print(s"Analyzing $name with $analysisType with k=$k")
                 val program = SchemeParser.parseProgram(loadFile(filename))
 
-                // Run
+
+                val anl = makeAnalysis(k)(program)
+                val result = timeAnalysis((name, program), anl, analysisType).map { case (result, timeTaken) =>
+                    (result.totalIterations.toDouble, timeTaken / (1000 * 1000), result.totalVarSize.toDouble, result.totalRetSize.toDouble)
+                }
+                println()
+                println(s"NUMBER OF INTRA-ANALYSES: ${anl.num_analyses}")
+
+/*                // Run
                 val results: Option[List[(Double, Double, Double, Double)]] = (1 to (warmup + numIterations)).toList
                     .mapM(i =>
                         print(i)
@@ -752,11 +761,11 @@ object DynamicWorklistAlgorithms:
                         println(s"NUMBER OF INTRA-ANALYSES: ${anl.num_analyses}")
                         result
                     )
-                    .map(_.drop(warmup))
+                    .map(_.drop(warmup))*/
 
                 println()
 
-                // Compute metrics
+/*                // Compute metrics
                 if results.isDefined then
                     val stats = Statistics.all(results.get.map(_._2).toList)
                     outputTable = outputTable.add(s"${name}%%$analysisType%%$k", "time_mean", Some(stats.mean))
@@ -775,7 +784,7 @@ object DynamicWorklistAlgorithms:
 
                 val file = Writer.open("output/results.csv")
                 Writer.write(file, outputString)
-                Writer.close(file)
+                Writer.close(file)*/
             }
 
     abstract class BenchmarkSuite:
