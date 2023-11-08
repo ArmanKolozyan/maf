@@ -457,7 +457,7 @@ object DynamicWorklistAlgorithms:
             lazy val ordering: Ordering[Component] = Ordering.by((cmp: Component) => priorities.getOrElse(cmp, 0.0))(Ordering.Double.TotalOrdering)
           //  lazy val ordering: Ordering[Component] = Ordering.by(priorities)(Ordering.Double.TotalOrdering)
             /** A map of edge weights corresponding to the number of triggers for that particular edge (inverted) */
-            private var priorities: Map[Any, Double] = Map().withDefaultValue(0)
+            private var priorities: Map[Component, Double] = Map().withDefaultValue(0)
 
             /** A map that keeps track of the weights for an edge over time */
             private var weights: Map[(Node, Node), Double] = Map()
@@ -563,11 +563,15 @@ object DynamicWorklistAlgorithms:
                             // then we compute priority over that
                             val floydwarshallWeights = FloydWarshall.floydwarshall(nodes, edges, weights, Double.PositiveInfinity)
                             priorities = nodes
-                                .map(destination =>
-                                    destination -> nodes // realise that we have '->' here, which means that we construct a pair
+                              .filter {
+                                  case Node.CmpNode(_) => true
+                                  case _ => false
+                              }
+                                .map{ case destination @ Node.CmpNode(comp) =>
+                                    comp -> nodes // realise that we have '->' here, which means that we construct a pair
                                         .flatMap(source => floydwarshallWeights.get((source, destination)).map(Math.abs))
                                         .foldLeft(0.0)(_ + _)
-                                )
+                                }
                                 .toMap
 
                            // val (sccs, sccEdges) = Tarjan.collapse(nodes, edges)
@@ -610,7 +614,7 @@ object DynamicWorklistAlgorithms:
             lazy val ordering: Ordering[Component] = Ordering.by((cmp: Component) => priorities.getOrElse(cmp, 0.0))(Ordering.Double.TotalOrdering)
 
             /** A map of edge weights corresponding to the number of triggers for that particular edge (inverted) */
-            private var priorities: Map[Any, Double] = Map().withDefaultValue(0)
+            private var priorities: Map[Component, Double] = Map().withDefaultValue(0)
 
             /** A map that keeps track of the weights for an edge over time */
             private var weights: Map[(Node, Node), Double] = Map()
@@ -682,12 +686,16 @@ object DynamicWorklistAlgorithms:
                         // then we compute priority over that
                         val floydwarshallWeights = FloydWarshall.floydwarshall(nodes, edges, weights, Double.PositiveInfinity)
                         priorities = nodes
-                            .map(destination =>
-                                destination -> nodes // realise that we have '->' here, which means that we construct a pair
-                                    .flatMap(source => floydwarshallWeights.get((source, destination)).map(Math.abs))
-                                    .foldLeft(0.0)(_ + _)
-                            )
-                            .toMap
+                          .filter {
+                              case Node.CmpNode(_) => true
+                              case _ => false
+                          }
+                          .map { case destination@Node.CmpNode(comp) =>
+                              comp -> nodes // realise that we have '->' here, which means that we construct a pair
+                                .flatMap(source => floydwarshallWeights.get((source, destination)).map(Math.abs))
+                                .foldLeft(0.0)(_ + _)
+                          }
+                          .toMap
 
                         val edgesDot: Map[String, Set[String]] = edges.map { case (k, v) =>
                             (k.toString, v.map(_.toString()))
@@ -739,7 +747,7 @@ object DynamicWorklistAlgorithms:
         var outputTable: Table[Option[Double]] = Table.empty(default = None)
         bench.toList
             .cartesian(analyses)
-            .cartesian((0 until 1).toList)
+            .cartesian((0 until 3).toList)
             .foreach { case (((filename, name), (analysisType, makeAnalysis)), k) =>
                 print(s"Analyzing $name with $analysisType with k=$k")
                 val program = SchemeParser.parseProgram(loadFile(filename))
