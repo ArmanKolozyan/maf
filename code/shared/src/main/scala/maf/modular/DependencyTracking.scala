@@ -25,6 +25,8 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
     /** Track the number of times a dependency has been triggered by the analysis */
     var dependencyTriggerCount: Map[Dependency, Int] = Map()
 
+    var dependencyTriggerCount_distinguish: Map[(Dependency,Component), Int] = Map()
+
     //
     // Graph
     //
@@ -88,6 +90,10 @@ trait DependencyTracking[Expr <: Expression] extends ModAnalysis[Expr] { inter =
             dependencies += component -> (dependencies(component) ++ C) // update the bookkeeping
             readDependencies += component -> (readDependencies(component) ++ readDeps)
             writeEffects += component -> (writeEffects(component) ++ writeEffs)
+            writeEffs.foreach(addr => {
+                    dependencyTriggerCount_distinguish =
+                        dependencyTriggerCount_distinguish.updatedWith((AddrDependency(addr), component))(v => Some(v.map(_ + 1).getOrElse(0)))
+                })
 
     override def configString(): String = super.configString() + "\n  with dependency tracking"
 
